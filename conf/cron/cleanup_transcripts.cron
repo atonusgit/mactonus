@@ -1,0 +1,1 @@
+#0 */1 * * * root python3 /root/scripts/siistiminen/cleanup_transcripts.py >> /tmp/cleanup_transcripts/stout.log 2>> /tmp/cleanup_transcripts/sterr.log

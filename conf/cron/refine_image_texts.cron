@@ -1,0 +1,1 @@
+*/5 * * * * root python3 /root/scripts/kuvat/refine_image_texts.py >> /tmp/refine_image_texts/stout.log 2>> /tmp/refine_image_texts/sterr.log

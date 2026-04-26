@@ -1,0 +1,24 @@
+services:
+  mactonus:
+    build: .
+    container_name: mactonus
+    restart: unless-stopped
+    volumes:
+      - "${VAULT_HOST_PATH}:/vault:rw"
+      - "./conf/ssh:/root/.ssh"
+      - "./conf/cron/analyze_images.cron:/etc/cron.d/analyze_images"
+      - "./conf/cron/cleanup_obsidian_notes.cron:/etc/cron.d/cleanup_obsidian_notes"
+      - "./conf/cron/cleanup_transcripts.cron:/etc/cron.d/cleanup_transcripts"
+      - "./conf/cron/refine_image_texts.cron:/etc/cron.d/refine_image_texts"
+      - "./scripts:/root/scripts"
+      - "./logs/analyze_images:/tmp/analyze_images"
+      - "./logs/cleanup_obsidian_notes:/tmp/cleanup_obsidian_notes"
+      - "./logs/cleanup_transcripts:/tmp/cleanup_transcripts"
+      - "./logs/refine_image_texts:/tmp/refine_image_texts"
+    env_file:
+      - .env
+    environment:
+      - TZ=Europe/Helsinki
+      - OLLAMA_API_KEY=ollama-local
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
