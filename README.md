@@ -1,6 +1,6 @@
 # Mactonus
 
-Paikallinen AI-putki Obsidian-vaultille. Automatisoi muistiinpanojen, äänitallenteiden ja kuvien käsittelyn hyödyntäen **paikallisia** malleja — ei pilveä, ei API-avaimia, ei dataa ulos. Kaikki LLM-, litterointi- ja TTS-inferenssi pyörii hostilla Metal-kiihdytyksellä.
+Paikallinen AI-putki Obsidian-vaultille. Automatisoi muistiinpanojen, äänitallenteiden ja kuvien käsittelyn hyödyntäen **paikallisia** malleja — ei pilveä, ei API-avaimia, ei dataa ulos. Lisäksi reaaliaikainen ääniagentti seuraa käynnissä olevaa nauhoitusistuntoa ja kommentoi sitä puheella. Kaikki LLM-, litterointi- ja TTS-inferenssi pyörii hostilla Metal-kiihdytyksellä.
 
 ## Yleisarkkitehtuuri
 
