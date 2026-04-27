@@ -118,7 +118,6 @@ def main():
         polku = os.path.join(KANSIO, tiedosto)
 
         if on_siistitty(polku):
-            log(f"Ohitetaan (jo siistitty): {tiedosto}")
             continue
 
         try:
@@ -127,6 +126,11 @@ def main():
         except Exception as e:
             log(f"Virhe luettaessa {polku}: {e}")
             continue
+
+        if "*[siisti]*" not in sisalto:
+            continue
+
+        sisalto = sisalto.replace("*[siisti]*", "").strip()
 
         log(f"Siistitään: {tiedosto}")
         uusi_sisalto = siisti_tiedosto(polku, sisalto, prompt_pohja)

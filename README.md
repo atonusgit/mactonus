@@ -69,7 +69,7 @@ flowchart TB
 | Kuva-analyysi | cron 15 min (kontti) | `kuvat/analyze_images.sh` → `encode_image.py` | `MALLI_KUVAT` | kuva `**/Liitteet/`:ssä → `*_teksti.md` + linkit viereisiin md-tiedostoihin |
 | Kuvatekstien jalostus | cron 5 min (kontti) | `kuvat/refine_image_texts.py` | `MALLI_TEKSTIT` | `*_teksti.md` joissa `#siisti-kuvailutulkkaus` → siistitty kuvaus + avainsanat |
 | Obsidian-notejen siistiminen | cron 1 min (kontti) | `siistiminen/cleanup_obsidian_notes.py` | `MALLI_TEKSTIT` | `*[siisti]*`-merkitty `.md` → korvattu sisältö |
-| Transkriptien siistiminen | manuaalinen (kontti) | `siistiminen/cleanup_transcripts.py [prompt]` | `MALLI_TEKSTIT` | `Nauhoitukset/*.md` + valittu prompt → `*_<prompt>.md` |
+| Transkriptien siistiminen | manuaalinen (kontti) | `siistiminen/cleanup_transcripts.py [prompt]` | `MALLI_TEKSTIT` | `*[siisti]*`-merkitty `Nauhoitukset/*.md` + valittu prompt → `*_<prompt>.md` |
 | Kommentointi | manuaalinen (kontti) | `puhe/commenter.py` + VoxCPM2 | `MALLI_KOMMENTOIJA` | aktiivinen nauhoitusistunto → puhuttu kommentti |
 
 (Lisäksi `puhe/say.py` on yksinkertainen TTS-asiakas debugointiin, ei oma työnkulku.)
@@ -144,8 +144,8 @@ sequenceDiagram
     Note over U,CT: Manuaalinen — transkriptit
     U->>CT: docker exec ... cleanup_transcripts.py [prompt]
     CT->>V: lue Dokumenttimuoto-kehotteet/<prompt>.md
-    CT->>V: hae Nauhoitukset/*.md (max 4)
-    loop tiedostot
+    CT->>V: hae Nauhoitukset/*.md, *[siisti]*-merkki
+    loop merkityt (max 4)
         CT->>Ol: POST (MALLI_TEKSTIT, prompt + sisältö)
         Ol-->>CT: jalostettu teksti
         CT->>V: kirjoita SESSIO_<prompt>.md
