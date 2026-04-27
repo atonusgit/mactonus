@@ -122,23 +122,32 @@ def main():
 
         try:
             with open(polku, "r", encoding="utf-8") as f:
-                sisalto = f.read()
+                sisalto_alkuperainen = f.read()
         except Exception as e:
             log(f"Virhe luettaessa {polku}: {e}")
             continue
 
-        if "*[siisti]*" not in sisalto:
+        if "*[siisti]*" not in sisalto_alkuperainen:
             continue
 
-        sisalto = sisalto.replace("*[siisti]*", "").strip()
+        sisalto_llm = sisalto_alkuperainen.replace("*[siisti]*", "").strip()
 
         log(f"Siistitään: {tiedosto}")
-        uusi_sisalto = siisti_tiedosto(polku, sisalto, prompt_pohja)
+        uusi_sisalto = siisti_tiedosto(polku, sisalto_llm, prompt_pohja)
 
         if uusi_sisalto:
             siistitty = polku.replace(".md", f"_{prompt_nimi}.md")
             with open(siistitty, "w", encoding="utf-8") as f:
                 f.write(uusi_sisalto)
+
+            # Vaihda alkuperäisen tiedoston merkki *[siisti]* → *[Siistitty: pvm]*,
+            # jotta selviää että tiedosto on jo käsitelty (ja jotta on_siistitty() bongaa sen).
+            paivitetty = sisalto_alkuperainen.replace(
+                "*[siisti]*", f"*[Siistitty: {date.today()}]*", 1
+            )
+            with open(polku, "w", encoding="utf-8") as f:
+                f.write(paivitetty)
+
             log(f"Valmis: {os.path.basename(siistitty)}")
             laskuri += 1
         else:
