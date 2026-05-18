@@ -103,6 +103,13 @@ def puhu(teksti: str) -> None:
             tulos = json.loads(vastaus.read().decode("utf-8"))
         if not tulos.get("ok"):
             print(f"\033[1;31m✗ VoxCPM2-virhe: {tulos.get('error')}\033[0m", file=sys.stderr)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace").strip()
+        try:
+            viesti = json.loads(body).get("error", body)
+        except json.JSONDecodeError:
+            viesti = body
+        print(f"\033[1;31m✗ VoxCPM2-virhe ({e.code}): {viesti}\033[0m", file=sys.stderr)
     except urllib.error.URLError as e:
         print(
             f"\033[1;31m✗ VoxCPM2-yhteysvirhe: {e}. Onko voxcpm2_server.py käynnissä?\033[0m",
