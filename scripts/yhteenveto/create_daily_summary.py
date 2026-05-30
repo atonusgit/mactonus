@@ -77,24 +77,26 @@ def luo_yhteenveto(tiedostot_ja_sisallot, on_maanantai=False):
     
     ajanjakso = "edellisen viikon" if on_maanantai else "eilisen päivän"
     
-    prompt = f"""Luon seuraavista tiedostoista ERITTÄIN TIIVIN yhteenveton suomeksi.
+    prompt = f"""Luon seuraavista tiedostoista ERITTÄIN TIIVIN yhteenvedon suomeksi.
 Tiedostot on muokattu {ajanjakso}.
 
 Sisältö:
 {tiedostot_tekstina}
 
 OHJEET YHTEENVEDOLLE:
-1. Kirjoita tarkalleen VIISI lausetta yleisestä sisällöstä ja keskeisistä teemoista.
-2. Lisää tarkalleen VIISI bullet pointia (- merkillä) tärkeimmistä yksityiskohdista.
-3. Päätä yhteenveto tarkalleen KAHDELLA lauseella, jotka kiteyttävät tärkeimmän noston päivälle.
+1. Kirjoita tarkalleen viisi lausetta yleisestä sisällöstä ja keskeisistä teemoista.
+2. Lisää tarkalleen viisi bullet pointia (- merkillä) tärkeimmistä yksityiskohdista.
+3. Päätä yhteenveto tarkalleen kahdella lauseella, jotka kiteyttävät tärkeimmän noston päivälle.
+4. Lisää loppuun "Lähteet:" otsikon alla luettelona kaikki lähdetiedostot Obsidian-linkkeinä (muodossa [[tiedostonnimi.md]] ilman polkuja, - merkillä).
 
-Palauta VAIN yhteenveto markdown-muodossa. Älä sisällytä mitään muuta tekstiä.
+Palauta vain yhteenveto markdown-muodossa. Älä sisällytä mitään muuta tekstiä.
 Formatoi:
 - Yleiskuvaus (5 lausetta, tavallinen teksti)
 - Bullet pointit (tarkalleen 5 kpl, - merkillä)
 - Tärkein nosto (2 lausetta, tavallinen teksti)
+- Lähteet: (luettelo lähdetiedostoista)
 
-ÄLÄ käytä otsikoita, älä selitä, älä lisää teknisiä merkintöjä."""
+Älä käytä otsikoita, älä selitä, älä lisää teknisiä merkintöjä."""
     
     payload = json.dumps({
         "model": MALLI_TEKSTIT,
