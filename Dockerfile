@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     cron \
     nano \
     locales \
+    xz-utils \
     && sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen \
     && locale-gen \
     && rm -rf /var/lib/apt/lists/*
@@ -17,6 +18,9 @@ ENV PYTHONIOENCODING=utf-8
 
 RUN mkdir -p /vault
 
+RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+
 WORKDIR /root
 
-CMD ["cron", "-f"]
+CMD ["sh", "-c", "hermes gateway & cron -f"]
+#CMD ["cron", "-f"]

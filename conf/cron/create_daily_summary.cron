@@ -1,2 +1,2 @@
 PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/sbin:/bin
-0,10,20,30,40,50 9 * * *,0 10 * * * root python3 /root/scripts/yhteenveto/create_daily_summary.py >> /tmp/yhteenveto/stout.log 2>> /tmp/yhteenveto/sterr.log
+*/10 9 * * 1-5 root python3 /root/scripts/yhteenveto/create_daily_summary.py >> /tmp/create_daily_summary/stout.log 2>> /tmp/create_daily_summary/sterr.log

@@ -16,11 +16,13 @@ services:
       - "./logs/cleanup_obsidian_notes:/tmp/cleanup_obsidian_notes"
       - "./logs/cleanup_transcripts:/tmp/cleanup_transcripts"
       - "./logs/refine_image_texts:/tmp/refine_image_texts"
-      - "./logs/yhteenveto:/tmp/yhteenveto"
+      - "./logs/create_daily_summary:/tmp/create_daily_summary"
+      - "./.hermes:/root/.hermes"
     env_file:
       - .env
     environment:
       - TZ=Europe/Helsinki
       - OLLAMA_API_KEY=ollama-local
+      - OBSIDIAN_VAULT_PATH=/vault
     extra_hosts:
       - "host.docker.internal:host-gateway"
