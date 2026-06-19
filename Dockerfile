@@ -29,6 +29,7 @@ RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 
 WORKDIR /root
 
-# pi on pelkkä interaktiivinen CLI (ei gateway-/daemon-tilaa kuten hermesissä),
-# joten kontti ajaa vain cronin. pi:tä käytetään: docker exec -it mactonus pi
-CMD ["cron", "-f"]
+# pi on pelkkä interaktiivinen CLI (ei gateway-tilaa), joten kontti ajaa cronin
+# ja — jos Telegram-token on annettu — Telegram-sillan, joka ajaa pi:tä headless.
+# Silta uudelleenkäynnistyy jos se kaatuu. pi:tä käytetään myös: docker exec -it mactonus pi
+CMD ["sh", "-c", "if [ -n \"$TELEGRAM_BOT_TOKEN\" ]; then (while true; do python3 /root/scripts/telegram/telegram_bridge.py; echo 'silta kaatui, uudelleenkäynnistys 5 s päästä'; sleep 5; done >> /tmp/telegram/silta.log 2>&1) & fi; cron -f"]
