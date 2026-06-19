@@ -43,6 +43,8 @@ fi
 {
     echo "# $TITLE"
     echo ""
+    echo "Lähde: $URL"
+    echo ""
     echo "---"
     echo ""
     grep -v '^[0-9]*$' "$TEMP_SUB" \
