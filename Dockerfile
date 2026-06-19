@@ -18,10 +18,14 @@ ENV PYTHONIOENCODING=utf-8
 
 RUN mkdir -p /vault
 
-RUN curl -fsSL https://pi.dev/install.sh | sh
+# Asenna Node.js 22 (pi-coding-agent vaatii sen; slim-imagessa ei ole nodea)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
 
-# pi:n asennin sijoittaa binäärin yleensä ~/.local/bin:iin → varmistetaan PATH
-ENV PATH="/root/.local/bin:${PATH}"
+# Asenna pi.dev-työkalu npm:llä. pi.dev/install.sh vain delegoi tähän eikä toimi
+# ilman terminaalia Docker-buildissa, joten kutsutaan npm:ää suoraan.
+RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 
 WORKDIR /root
 
