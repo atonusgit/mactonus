@@ -17,7 +17,7 @@ services:
       - "./logs/cleanup_transcripts:/tmp/cleanup_transcripts"
       - "./logs/refine_image_texts:/tmp/refine_image_texts"
       - "./logs/create_daily_summary:/tmp/create_daily_summary"
-      - "./.hermes:/root/.hermes"
+      - "./.pi:/root/.pi"
     env_file:
       - .env
     environment:

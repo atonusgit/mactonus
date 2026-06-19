@@ -18,9 +18,13 @@ ENV PYTHONIOENCODING=utf-8
 
 RUN mkdir -p /vault
 
-RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+RUN curl -fsSL https://pi.dev/install.sh | sh
+
+# pi:n asennin sijoittaa binäärin yleensä ~/.local/bin:iin → varmistetaan PATH
+ENV PATH="/root/.local/bin:${PATH}"
 
 WORKDIR /root
 
-CMD ["sh", "-c", "hermes gateway & cron -f"]
-#CMD ["cron", "-f"]
+# pi on pelkkä interaktiivinen CLI (ei gateway-/daemon-tilaa kuten hermesissä),
+# joten kontti ajaa vain cronin. pi:tä käytetään: docker exec -it mactonus pi
+CMD ["cron", "-f"]
