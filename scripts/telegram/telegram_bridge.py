@@ -19,14 +19,15 @@
 #                             valitsee models.json:n ainoan mallin)
 
 import json, os, re, sys, time, glob, subprocess
-import urllib.request, urllib.parse
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from telegram_api import api_kutsu, laheta_viesti, riisu_markdown
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 SALLITUT = {c.strip() for c in os.environ.get("TELEGRAM_SALLITUT_CHATIT", "").split(",") if c.strip()}
 PI_TYOHAKEMISTO = os.environ.get("PI_TYOHAKEMISTO", "/vault")
 PI_AIKAKATKAISU = int(os.environ.get("PI_AIKAKATKAISU", "600"))
 PI_MALLI = os.environ.get("PI_MALLI", "").strip()
-API = f"https://api.telegram.org/bot{TOKEN}"
 
 # pi tallentaa sessiot tänne (yksi .jsonl per keskustelu). --session avaa vain
 # olemassa olevan session, joten pidämme itse kirjaa per chat -> sessiopolku.
@@ -49,39 +50,6 @@ LATAUS_AIKAKATKAISU = int(os.environ.get("YOUTUBE_AIKAKATKAISU", "180"))
 
 def loki(viesti):
     print(viesti, flush=True)
-
-
-def api_kutsu(metodi, data=None, timeout=60):
-    datab = urllib.parse.urlencode(data).encode() if data else None
-    pyynto = urllib.request.Request(f"{API}/{metodi}", data=datab)
-    with urllib.request.urlopen(pyynto, timeout=timeout) as vastaus:
-        return json.load(vastaus)
-
-
-def riisu_markdown(teksti):
-    # Telegram ei renderöi markdownia ilman parse_mode-parametria, joten
-    # poistetaan pi:n vastauksesta markdown-syntaksi ja jätetään pelkkä teksti.
-    if not teksti:
-        return teksti
-    teksti = re.sub(r"```[\w-]*\n?", "", teksti)                  # koodiaidat pois
-    teksti = re.sub(r"`([^`]+)`", r"\1", teksti)                  # `inline` -> inline
-    teksti = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", teksti)         # ## otsikko -> otsikko
-    teksti = re.sub(r"(\*\*|__)(.+?)\1", r"\2", teksti)           # **liha** -> liha
-    teksti = re.sub(r"(?<!\w)([*_])(.+?)\1(?!\w)", r"\2", teksti) # *kursiivi* -> kursiivi
-    teksti = re.sub(r"(?m)^(\s*)[-*+]\s+", r"\1• ", teksti)       # lista -> •
-    teksti = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1 (\2)", teksti)  # [teksti](url) -> teksti (url)
-    teksti = re.sub(r"(?m)^\s{0,3}>\s?", "", teksti)              # > lainaus pois
-    return teksti
-
-
-def laheta_viesti(chat_id, teksti):
-    # Telegram rajoittaa 4096 merkkiin -> paloitellaan turvallisesti.
-    teksti = teksti or "(tyhjä vastaus)"
-    for i in range(0, len(teksti), 4000):
-        try:
-            api_kutsu("sendMessage", {"chat_id": chat_id, "text": teksti[i:i + 4000]})
-        except Exception as e:
-            loki(f"Lähetys epäonnistui chatille {chat_id}: {e}")
 
 
 def naytä_kirjoittaa(chat_id):
@@ -231,12 +199,12 @@ def main():
                 continue
             if chat_id not in SALLITUT:
                 loki(f"Estetty chat {chat_id}: {teksti[:50]!r}")
-                laheta_viesti(chat_id, "Ei käyttöoikeutta.")
+                laheta_viesti(chat_id, "Ei käyttöoikeutta.", loki=loki)
                 continue
             loki(f"Viesti {chat_id}: {teksti[:80]!r}")
             naytä_kirjoittaa(chat_id)
             teksti_pi = esikasittele(teksti)
-            laheta_viesti(chat_id, riisu_markdown(aja_pi(chat_id, teksti_pi)))
+            laheta_viesti(chat_id, riisu_markdown(aja_pi(chat_id, teksti_pi)), loki=loki)
 
 
 if __name__ == "__main__":
