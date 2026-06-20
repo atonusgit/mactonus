@@ -46,10 +46,32 @@ LATAA_SKRIPTI = os.path.join(
     "youtube", "download_transcript.sh",
 )
 LATAUS_AIKAKATKAISU = int(os.environ.get("YOUTUBE_AIKAKATKAISU", "180"))
+# YouTube-litterointi on oletuksena päällä. Voidaan kytkeä pois esim.
+# vaultittomassa kontissa (YOUTUBE_LATAUS=0), jolloin linkkejä ei käsitellä.
+YOUTUBE_LATAUS = os.environ.get("YOUTUBE_LATAUS", "1").strip().lower() not in ("0", "false", "ei", "no")
+# Kun päällä, silta liittää viestin alkuun lähettäjän nimen/käyttäjätunnuksen/id:n,
+# jotta pi tietää KENEN kanssa puhuu (monikäyttäjäidentiteetit, esim. Närhisulka).
+# Oletuksena pois -> yhden käyttäjän identiteetit (esim. mactonus) ennallaan.
+KERRO_LAHETTAJA = os.environ.get("KERRO_LAHETTAJA", "0").strip().lower() in ("1", "true", "kyllä", "yes")
 
 
 def loki(viesti):
     print(viesti, flush=True)
+
+
+def lahettaja_tunniste(viesti):
+    # Rakentaa pi:lle annettavan rivin viestin lähettäjästä, esim.
+    # "[Viesti käyttäjältä Anton Valle (@anton), id 123]". Tyhjä jos tieto puuttuu.
+    lahettaja = viesti.get("from") or {}
+    nimi = " ".join(x for x in (lahettaja.get("first_name"), lahettaja.get("last_name")) if x)
+    tunnus = lahettaja.get("username")
+    kid = lahettaja.get("id")
+    osat = [nimi or "tuntematon"]
+    if tunnus:
+        osat.append(f"(@{tunnus})")
+    if kid is not None:
+        osat.append(f"id {kid}")
+    return f"[Viesti käyttäjältä {' '.join(osat)}]"
 
 
 def naytä_kirjoittaa(chat_id):
@@ -104,6 +126,8 @@ def esikasittele(teksti):
     # Jos viestissä on YouTube-linkki, ladataan sen transkriptio deterministisesti
     # ja kerrotaan pi:lle tiedostopolku (ei sisältöä -> ei konteksti- ikkunan
     # räjäytystä). Palauttaa pi:lle annettavan tekstin.
+    if not YOUTUBE_LATAUS:
+        return teksti
     osuma = YOUTUBE_RE.search(teksti)
     if not osuma:
         return teksti
@@ -204,6 +228,8 @@ def main():
             loki(f"Viesti {chat_id}: {teksti[:80]!r}")
             naytä_kirjoittaa(chat_id)
             teksti_pi = esikasittele(teksti)
+            if KERRO_LAHETTAJA:
+                teksti_pi = f"{lahettaja_tunniste(viesti)}\n\n{teksti_pi}"
             laheta_viesti(chat_id, riisu_markdown(aja_pi(chat_id, teksti_pi)), loki=loki)
 
 
