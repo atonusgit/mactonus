@@ -4,6 +4,8 @@
 logs
 whisper-models
 .env
+.env.*
+!.env.*.example
 
 conf/ssh/*
 
@@ -11,3 +13,6 @@ tmp
 __pycache__
 
 paikallinen-puheassistentti
+
+# Närhisulka on oma itsenäinen projektinsa -> ei versioida mactonuksen mukana
+narhisulka/
