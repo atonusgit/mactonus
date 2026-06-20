@@ -33,6 +33,19 @@ API = f"https://api.telegram.org/bot{TOKEN}"
 SESSIOT_JUURI = os.path.expanduser("~/.pi/agent/sessions")
 SESSIO_KARTTA = os.path.expanduser("~/.pi/chats/sessiot.json")
 
+# YouTube-linkin tunnistus viestistä. Jos linkki löytyy, silta lataa sen
+# transkription deterministisesti download_transcript.sh:lla ENNEN kuin viesti
+# menee pi:lle (ks. lataa_transkriptio). Polku selvitetään tämän tiedoston
+# sijainnista, joten se toimii myös kontin ulkopuolella.
+YOUTUBE_RE = re.compile(
+    r"https?://(?:www\.|m\.)?(?:youtube\.com/(?:watch\?\S*v=|shorts/|live/)|youtu\.be/)[\w\-]+\S*"
+)
+LATAA_SKRIPTI = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "youtube", "download_transcript.sh",
+)
+LATAUS_AIKAKATKAISU = int(os.environ.get("YOUTUBE_AIKAKATKAISU", "180"))
+
 
 def loki(viesti):
     print(viesti, flush=True)
@@ -94,6 +107,48 @@ def tallenna_kartta(kartta):
 
 def kaikki_sessiotiedostot():
     return set(glob.glob(os.path.join(SESSIOT_JUURI, "**", "*.jsonl"), recursive=True))
+
+
+def lataa_transkriptio(url):
+    # Ajaa download_transcript.sh:n annetulla linkillä ja palauttaa luodun
+    # transkriptiotiedoston polun, tai None jos lataus epäonnistui. Skripti
+    # tulostaa onnistuessaan rivin "Saved to: <polku>".
+    try:
+        tulos = subprocess.run(
+            ["bash", LATAA_SKRIPTI, url],
+            cwd=PI_TYOHAKEMISTO,
+            capture_output=True, text=True, timeout=LATAUS_AIKAKATKAISU,
+        )
+    except subprocess.TimeoutExpired:
+        loki(f"Transkription lataus aikakatkaistiin: {url}")
+        return None
+    except FileNotFoundError:
+        loki("Virhe: bash tai download_transcript.sh ei löydy.")
+        return None
+    for rivi in (tulos.stdout or "").splitlines():
+        if rivi.startswith("Saved to:"):
+            return rivi.split("Saved to:", 1)[1].strip()
+    loki(f"Transkriptiota ei saatu ({url}): {(tulos.stdout or tulos.stderr or '').strip()[:200]}")
+    return None
+
+
+def esikasittele(teksti):
+    # Jos viestissä on YouTube-linkki, ladataan sen transkriptio deterministisesti
+    # ja kerrotaan pi:lle tiedostopolku (ei sisältöä -> ei konteksti- ikkunan
+    # räjäytystä). Palauttaa pi:lle annettavan tekstin.
+    osuma = YOUTUBE_RE.search(teksti)
+    if not osuma:
+        return teksti
+    url = osuma.group(0)
+    loki(f"YouTube-linkki havaittu, ladataan transkriptio: {url}")
+    polku = lataa_transkriptio(url)
+    if polku:
+        ohje = (f"[Järjestelmä: viestin YouTube-video on jo litteroitu tiedostoon "
+                f"{polku}. Lue se read-työkalulla, jos vastaus sitä edellyttää.]")
+    else:
+        ohje = ("[Järjestelmä: viestin YouTube-linkin litterointi epäonnistui — "
+                "transkriptiota ei ole saatavilla.]")
+    return f"{ohje}\n\n{teksti}"
 
 
 def aja_pi(chat_id, teksti):
@@ -180,7 +235,8 @@ def main():
                 continue
             loki(f"Viesti {chat_id}: {teksti[:80]!r}")
             naytä_kirjoittaa(chat_id)
-            laheta_viesti(chat_id, riisu_markdown(aja_pi(chat_id, teksti)))
+            teksti_pi = esikasittele(teksti)
+            laheta_viesti(chat_id, riisu_markdown(aja_pi(chat_id, teksti_pi)))
 
 
 if __name__ == "__main__":

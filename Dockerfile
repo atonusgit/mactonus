@@ -7,9 +7,15 @@ RUN apt-get update && apt-get install -y \
     nano \
     locales \
     xz-utils \
+    ffmpeg \
     && sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen \
     && locale-gen \
     && rm -rf /var/lib/apt/lists/*
+
+# yt-dlp YouTube-transkriptioiden lataukseen (Telegram-silta käyttää sitä
+# download_transcript.sh:n kautta). Asennetaan pipillä eikä apt:lla, koska
+# YouTube rikkoo yt-dlp:n usein -> apt-versio vanhenee nopeasti.
+RUN pip install --no-cache-dir yt-dlp
 
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
