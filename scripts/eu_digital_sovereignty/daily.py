@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+# EU Digital Sovereignty Daily - hae Staanista, tiivistä Ollamalla, lähetä Telegramiin.
+import hashlib, json, os, re, subprocess, sys
+from datetime import date
+from urllib.request import Request, urlopen
+from urllib.parse import quote
+
+SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TELEGRAM_DIR = os.path.join(SCRIPTS_DIR, "telegram")
+sys.path.insert(0, TELEGRAM_DIR)
+sys.path.insert(0, SCRIPTS_DIR)
+
+# Cron ei peri kontin ympäristöä -> peri envit kontin pääprosessilta
+# (/proc/1/environ) ENNEN kuin config ladataan, sillä config lukee MALLI_TEKSTIT:n
+# env:stä jo import-hetkellä.
+from telegram_api import peri_kontin_ymparisto, riisu_markdown
+peri_kontin_ymparisto()
+from config import MALLI_TEKSTIT, OLLAMA_URL, OLLAMA_AIKAKATKAISU  # jaetusta configista
+
+KEY = os.environ.get("STAAN_API_KEY", "")
+LIMIT = 5         # montako hakutulosta haetaan/tallennetaan (malli valitsee näistä)
+VALINTOJA = 2     # montako uutista malli valitsee ja tulkitsee viestiin
+
+# Yhden ajon hakutulosten välitallennus daily.py:n viereen tmp/-kansioon
+# (.gitignoren 'tmp'-sääntö ohittaa). Jos lähetys epäonnistuu, tulokset jäävät
+# tänne -> seuraava ajo käyttää niitä eikä kysy Staanilta uudestaan. Poistetaan
+# onnistuneen ajon päätteeksi.
+VALIAIKAKANSIO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tmp")
+VALIAIKATIEDOSTO = os.path.join(VALIAIKAKANSIO, "tulokset.json")
+
+# Lähetetyt uutiset arkistoidaan Obsidian-vaultiin muistiinpanoina (frontmatterin
+# source-kenttä = URL). Tämä toimii samalla PYSYVÄNÄ dedup-lähteenä: jo
+# tallennettuja URL:eja ei valita/tulkita uudestaan.
+VAULT = os.environ.get("OBSIDIAN_VAULT_PATH", "/vault")
+STAAN_KANSIO = os.path.join(VAULT, "Clippings", "Staan")
+
+QUERIES = [
+    "EU digital sovereignty local AI models foundation models infrastructure",
+    "sovereign open source AI models France Germany Italy European",
+    "European AI data sovereignty national infrastructure French",
+    "Finland national AI strategy local language models government",
+]
+
+
+def loki(viesti):
+    print(viesti, file=sys.stderr, flush=True)
+
+
+def tallenna_valiaika(tulokset):
+    os.makedirs(VALIAIKAKANSIO, exist_ok=True)
+    with open(VALIAIKATIEDOSTO, "w") as f:
+        json.dump(tulokset, f, ensure_ascii=False)
+
+
+def lue_valiaika():
+    # Palauttaa edellisen ajon tulokset, tai None jos tiedostoa ei ole / se on rikki.
+    try:
+        with open(VALIAIKATIEDOSTO) as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+def poista_valiaika():
+    try:
+        os.remove(VALIAIKATIEDOSTO)
+    except FileNotFoundError:
+        pass
+
+
+def lue_lahetetyt():
+    # Kerää jo arkistoitujen muistiinpanojen source-URL:t vaultista (dedup-lähde).
+    urlit = set()
+    try:
+        tiedostot = os.listdir(STAAN_KANSIO)
+    except FileNotFoundError:
+        return urlit
+    for nimi in tiedostot:
+        if not nimi.endswith(".md"):
+            continue
+        try:
+            with open(os.path.join(STAAN_KANSIO, nimi), encoding="utf-8") as f:
+                for rivi in f:
+                    if rivi.startswith("source:"):
+                        urlit.add(rivi.split("source:", 1)[1].strip())
+                        break
+        except OSError:
+            continue
+    return urlit
+
+
+def puhdista_nimi(teksti):
+    # Tiedostonimeksi kelpaava versio otsikosta (vrt. download_transcript.sh).
+    return re.sub(r"[^a-zA-Z0-9 _.,-]", "_", teksti).strip()[:120]
+
+
+def tallenna_muistiinpano(valinta, pvm):
+    # Arkistoi lähetetyn uutisen vaultiin. Toimii samalla dedup-merkintänä:
+    # tehdään heti onnistuneen lähetyksen jälkeen.
+    os.makedirs(STAAN_KANSIO, exist_ok=True)
+    nimi = puhdista_nimi(valinta["t"]) or hashlib.sha1(valinta["u"].encode()).hexdigest()[:12]
+    sisalto = (
+        "---\n"
+        f"source: {valinta['u']}\n"
+        f"pvm: {pvm}\n"
+        "---\n\n"
+        f"# {valinta['t']}\n{valinta['kuvaus']}\n\n"
+        f"# Sitra\n{valinta['tulkinta']}\n"
+    )
+    with open(os.path.join(STAAN_KANSIO, f"{nimi}.md"), "w", encoding="utf-8") as f:
+        f.write(sisalto)
+
+
+def haetaan(query):
+    if not KEY:
+        loki("STAAN_API_KEY puuttuu — ohitetaan haku.")
+        return []
+    url = f"https://api.staan.ai/v2/search/web?q={quote(query)}"
+    req = Request(url, method="GET")
+    req.add_header("Authorization", f"Bearer {KEY}")
+    try:
+        with urlopen(req, timeout=15) as resp:
+            data = json.load(resp)
+    except Exception as e:
+        loki(f"Haku epäonnistui ({query[:40]!r}): {e}")
+        return []
+    items = data.get("web", {}).get("results", [])
+    tulokset = []
+    for r in items[:LIMIT]:
+        osoite = r.get("url")
+        if not osoite:
+            continue
+        tulokset.append({"t": r.get("title", ""), "u": osoite, "s": r.get("snippet", "")})
+    return tulokset
+
+
+def yhdista():
+    kaikki = []
+    for q in QUERIES:
+        kaikki += haetaan(q)
+    nakyvat = set()
+    yks = []
+    for r in kaikki:
+        if r["u"] not in nakyvat:
+            nakyvat.add(r["u"])
+            yks.append(r)
+    return yks[:LIMIT]
+
+
+def valitse_uutiset(tulokset):
+    # Pyytää mallia valitsemaan enintään VALINTOJA relevanteinta uutista ja
+    # tulkitsemaan ne. Palauttaa listan {"t","u","tulkinta"} — URL otetaan AINA
+    # datasta (tulokset[indeksi]), ei mallin tekstistä, jotta linkit ovat oikein.
+    if not tulokset:
+        return []
+    numeroidut = "\n\n".join(
+        f"[{i}] {r['t']}\n{r['u']}\n{r['s']}" for i, r in enumerate(tulokset))
+    prompt = (
+        "Olet EU:n digitaalista suvereniteettia seuraava analyytikko Sitralla.\n\n"
+        "Alla on uutisia numeroituna (indeksi hakasulkeissa). Tehtäväsi:\n"
+        f"1. Valitse ENINTÄÄN {VALINTOJA} relevanteinta uutista EU:n digitaalisen "
+        "suvereniteetin ja PAIKALLISTEN tekoälymallien kannalta, Suomen ja Sitran "
+        "näkökulmasta.\n"
+        "2. Kirjoita kustakin valitusta KAKSI lyhyttä SUOMENKIELISTÄ tekstiä:\n"
+        '   - "kuvaus": mistä uutisessa on kyse (1-2 virkettä).\n'
+        '   - "tulkinta": miten Sitra voi olla avuksi tai mitä mahdollisuus '
+        "tarkoittaa Suomelle (2-3 konkreettista virkettä).\n"
+        "Älä käytä markdown-muotoilua teksteissä.\n\n"
+        "Palauta pelkkä JSON muodossa:\n"
+        '{"valinnat": [{"indeksi": <numero>, "kuvaus": "<teksti>", "tulkinta": "<teksti>"}]}\n\n'
+        "UUTISET:\n" + numeroidut)
+    payload = json.dumps({
+        "model": MALLI_TEKSTIT,
+        "prompt": prompt,
+        "stream": False,
+        "think": False,    # päättelymalli: ohitetaan "ajattelu" -> nopea vastaus
+        "format": "json",  # pakota validi JSON -> luotettava jäsennys
+    }).encode("utf-8")
+    req = Request(OLLAMA_URL, data=payload, headers={"Content-Type": "application/json"})
+    try:
+        with urlopen(req, timeout=OLLAMA_AIKAKATKAISU) as resp:
+            vastaus = json.load(resp).get("response", "").strip()
+    except Exception as e:
+        # Nostetaan poikkeus -> ajo epäonnistuu, välitiedosto säilyy uusintaa varten.
+        loki(f"Ollama epäonnistui: {e}")
+        raise
+    try:
+        valinnat = json.loads(vastaus).get("valinnat", [])
+    except ValueError:
+        raise RuntimeError(f"Mallin vastaus ei ollut validia JSONia: {vastaus[:200]!r}")
+
+    valitut = []
+    for v in valinnat:
+        try:
+            i = int(v.get("indeksi"))
+        except (TypeError, ValueError):
+            continue
+        # Siivotaan mallin tekstit markdownista (viesti lähetetään --raakana,
+        # jotta rungon #-otsikot säilyvät -> mallin teksti on siivottava itse).
+        kuvaus = riisu_markdown(v.get("kuvaus") or "").strip()
+        tulkinta = riisu_markdown(v.get("tulkinta") or "").strip()
+        if not (0 <= i < len(tulokset)) or not kuvaus or not tulkinta:
+            continue
+        r = tulokset[i]
+        valitut.append({"t": r["t"], "u": r["u"], "kuvaus": kuvaus, "tulkinta": tulkinta})
+        if len(valitut) >= VALINTOJA:
+            break
+    return valitut
+
+
+def muotoile(valinta):
+    # Yksi Telegram-viesti yhdestä valitusta uutisesta.
+    return (
+        f"# {valinta['t']}\n{valinta['kuvaus']}\n\n"
+        f"# Sitra\n{valinta['tulkinta']}\n\n"
+        f"Lähde:\n{valinta['u']}"
+    )
+
+
+def laheta(viesti):
+    # --raaka: viesti on jo siivottu (rungon #-otsikot halutaan säilyttää).
+    laheta_skripti = os.path.join(TELEGRAM_DIR, "laheta.py")
+    subprocess.run([sys.executable, laheta_skripti, "--raaka", viesti], check=True)
+
+
+def main():
+    print(f"[{date.today()}] EU DS Daily:")
+    # Käytä edellisen epäonnistuneen ajon tuloksia jos ne ovat tallessa,
+    # muuten hae Staanista ja tallenna ne (jos tuloksia löytyi).
+    tulos = lue_valiaika()
+    if tulos:
+        print(f"Käytetään edellisen ajon välitallenteita: {len(tulos)} tulosta")
+    else:
+        tulos = yhdista()
+        print(f"Tuloksia: {len(tulos)}")
+        if tulos:
+            tallenna_valiaika(tulos)
+
+    # Suodata jo vaultiin arkistoidut pois -> valitaan vain uusia uutisia.
+    lahetetyt = lue_lahetetyt()
+    uudet = [r for r in tulos if r["u"] not in lahetetyt]
+    print(f"Uusia (ei aiemmin lähetettyjä): {len(uudet)}/{len(tulos)}")
+    if not uudet:
+        print("Ei uusia uutisia — ei lähetetä.")
+        poista_valiaika()
+        return
+
+    pvm = date.today().strftime("%d.%m.%y")
+    valinnat = valitse_uutiset(uudet)
+    if not valinnat:
+        print("Malli ei valinnut yhtään uutista.")
+        poista_valiaika()
+        return
+
+    # Lähetä jokainen valittu uutinen OMANA viestinään ja merkitse lähetetyksi
+    # heti onnistumisen jälkeen (osittainen ajo ei lähetä samaa uudestaan).
+    for v in valinnat:
+        laheta(muotoile(v))
+        tallenna_muistiinpano(v, pvm)   # arkistoi vaultiin + dedup-merkintä
+        print(f"Lähetetty: {v['t'][:60]}")
+
+    poista_valiaika()
+    print(f"[OK] Lähetetty {len(valinnat)} viestiä")
+
+
+if __name__ == "__main__":
+    main()

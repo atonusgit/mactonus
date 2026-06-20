@@ -17,6 +17,7 @@ services:
       - "./logs/cleanup_transcripts:/tmp/cleanup_transcripts"
       - "./logs/refine_image_texts:/tmp/refine_image_texts"
       - "./logs/create_daily_summary:/tmp/create_daily_summary"
+      - "./logs/eu_digital_sovereignty:/tmp/eu_digital_sovereignty"
       - "./logs/telegram:/tmp/telegram"
       - "./.pi:/root/.pi"
     env_file:
