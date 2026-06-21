@@ -20,7 +20,7 @@ peri_kontin_ymparisto()
 from config import MALLI_TEKSTIT, OLLAMA_URL, OLLAMA_AIKAKATKAISU  # jaetusta configista
 
 KEY = os.environ.get("STAAN_API_KEY", "")
-LIMIT = 5         # montako hakutulosta haetaan/tallennetaan (malli valitsee näistä)
+LIMIT = 5         # tuloksia per hakutermi, ja mallille tarjottava ehdokasmäärä
 VALINTOJA = 2     # montako uutista malli valitsee ja tulkitsee viestiin
 SISALTO_MAX = 12000  # montako merkkiä haetusta sivusta syötetään tiivistäjälle
 # Selaimen User-Agent sivujen hakuun (jotkin sivut torjuvat oletus-urllibin).
@@ -99,7 +99,7 @@ def puhdista_nimi(teksti):
     return re.sub(r"[^a-zA-Z0-9 _.,-]", "_", teksti).strip()[:120]
 
 
-def tallenna_muistiinpano(valinta, pvm):
+def tallenna_muistiinpano(valinta):
     # Arkistoi lähetetyn uutisen vaultiin (sama sisältö kuin Telegram-viestissä).
     # Toimii samalla dedup-merkintänä: tehdään heti onnistuneen lähetyksen jälkeen.
     os.makedirs(STAAN_KANSIO, exist_ok=True)
@@ -107,7 +107,7 @@ def tallenna_muistiinpano(valinta, pvm):
     sisalto = (
         "---\n"
         f"source: {valinta['u']}\n"
-        f"pvm: {pvm}\n"
+        f"pvm: {valinta['pvm']}\n"
         "---\n\n"
         f"# {valinta['t']}\n{valinta['runko']}\n\n"
         f"# Sitra\n{valinta['tulkinta']}\n"
@@ -231,7 +231,7 @@ def yhdista():
         if r["u"] not in nakyvat:
             nakyvat.add(r["u"])
             yks.append(r)
-    return yks[:LIMIT]
+    return yks   # kaikki uniikit; karsinta (vault) ja rajaus tehdään mainissa
 
 
 def valitse_uutiset(tulokset):
@@ -311,11 +311,12 @@ def tee_tulkinta(otsikko, sisalto):
 
 
 def muotoile(valinta):
-    # Yksi Telegram-viesti: otsikko + sisällön tiivistelmä, Sitra-tulkinta, lähde.
+    # Yksi Telegram-viesti: otsikko + sisällön tiivistelmä, Sitra-tulkinta, lähde
+    # (julkaisupäivä suluissa).
     return (
         f"# {valinta['t']}\n{valinta['runko']}\n\n"
         f"# Sitra\n{valinta['tulkinta']}\n\n"
-        f"Lähde:\n{valinta['u']}"
+        f"Lähde ({valinta['pvm']}):\n{valinta['u']}"
     )
 
 
@@ -338,15 +339,18 @@ def main():
         if tulos:
             tallenna_valiaika(tulos)
 
-    # Suodata jo vaultiin arkistoidut pois -> valitaan vain uusia uutisia.
+    # Karsi jo vaultiin arkistoidut pois ENNEN rajausta, jotteivät jo lähetetyt
+    # vie ehdokaspaikkoja tuoreilta (näin myös myöhempien hakutermien tulokset
+    # pääsevät mukaan kun aiemmat on jo lähetetty).
     lahetetyt = lue_lahetetyt()
-    uudet = [r for r in tulos if r["u"] not in lahetetyt]
-    print(f"Uusia (ei aiemmin lähetettyjä): {len(uudet)}/{len(tulos)}")
-    if not uudet:
+    tuoreet = [r for r in tulos if r["u"] not in lahetetyt]
+    print(f"Uusia (ei aiemmin lähetettyjä): {len(tuoreet)}/{len(tulos)}")
+    if not tuoreet:
         print("Ei uusia uutisia — ei lähetetä.")
         poista_valiaika()
         return
 
+    uudet = tuoreet[:LIMIT]   # rajaa mallille tarjottava ehdokasjoukko vasta nyt
     pvm = date.today().strftime("%d.%m.%y")
     valinnat = valitse_uutiset(uudet)
     if not valinnat:
@@ -365,9 +369,10 @@ def main():
         tulkinta = tee_tulkinta(r["t"], runko)  # Sitra-näkökulma sisällön pohjalta
         # Julkaisupäivä sisällöstä; fallback hakupäivään jos ei löydy.
         julkaisu_pvm = (etsi_pvm(html) if html else None) or pvm
-        valinta = {"t": r["t"], "u": r["u"], "runko": runko, "tulkinta": tulkinta}
+        valinta = {"t": r["t"], "u": r["u"], "runko": runko,
+                   "tulkinta": tulkinta, "pvm": julkaisu_pvm}
         laheta(muotoile(valinta))
-        tallenna_muistiinpano(valinta, julkaisu_pvm)
+        tallenna_muistiinpano(valinta)
         print(f"Lähetetty: {r['t'][:60]} (pvm: {julkaisu_pvm}, sisältö: {'kyllä' if tiivistelma else 'snippet'})")
 
     poista_valiaika()
