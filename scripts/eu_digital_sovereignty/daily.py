@@ -2,8 +2,10 @@
 # EU Digital Sovereignty Daily - hae Staanista, tiivistä Ollamalla, lähetä Telegramiin.
 import hashlib, json, os, re, subprocess, sys
 from datetime import date
+from html import unescape
 from urllib.request import Request, urlopen
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
+from urllib.robotparser import RobotFileParser
 
 SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TELEGRAM_DIR = os.path.join(SCRIPTS_DIR, "telegram")
@@ -20,6 +22,9 @@ from config import MALLI_TEKSTIT, OLLAMA_URL, OLLAMA_AIKAKATKAISU  # jaetusta co
 KEY = os.environ.get("STAAN_API_KEY", "")
 LIMIT = 5         # montako hakutulosta haetaan/tallennetaan (malli valitsee näistä)
 VALINTOJA = 2     # montako uutista malli valitsee ja tulkitsee viestiin
+SISALTO_MAX = 12000  # montako merkkiä haetusta sivusta syötetään tiivistäjälle
+# Selaimen User-Agent sivujen hakuun (jotkin sivut torjuvat oletus-urllibin).
+UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
 # Yhden ajon hakutulosten välitallennus daily.py:n viereen tmp/-kansioon
 # (.gitignoren 'tmp'-sääntö ohittaa). Jos lähetys epäonnistuu, tulokset jäävät
@@ -95,8 +100,8 @@ def puhdista_nimi(teksti):
 
 
 def tallenna_muistiinpano(valinta, pvm):
-    # Arkistoi lähetetyn uutisen vaultiin. Toimii samalla dedup-merkintänä:
-    # tehdään heti onnistuneen lähetyksen jälkeen.
+    # Arkistoi lähetetyn uutisen vaultiin (sama sisältö kuin Telegram-viestissä).
+    # Toimii samalla dedup-merkintänä: tehdään heti onnistuneen lähetyksen jälkeen.
     os.makedirs(STAAN_KANSIO, exist_ok=True)
     nimi = puhdista_nimi(valinta["t"]) or hashlib.sha1(valinta["u"].encode()).hexdigest()[:12]
     sisalto = (
@@ -104,11 +109,93 @@ def tallenna_muistiinpano(valinta, pvm):
         f"source: {valinta['u']}\n"
         f"pvm: {pvm}\n"
         "---\n\n"
-        f"# {valinta['t']}\n{valinta['kuvaus']}\n\n"
+        f"# {valinta['t']}\n{valinta['runko']}\n\n"
         f"# Sitra\n{valinta['tulkinta']}\n"
     )
     with open(os.path.join(STAAN_KANSIO, f"{nimi}.md"), "w", encoding="utf-8") as f:
         f.write(sisalto)
+
+
+def sivu_sallittu(url):
+    # robots.txt: kunnioitetaan sivuston sääntöjä ("mikäli verkkosivu sallii").
+    # Virhe / ei robots.txt:ää -> sallitaan (lenient).
+    try:
+        p = urlparse(url)
+        robots = f"{p.scheme}://{p.netloc}/robots.txt"
+        with urlopen(Request(robots, headers={"User-Agent": UA}), timeout=8) as r:
+            rp = RobotFileParser()
+            rp.parse(r.read().decode("utf-8", "replace").splitlines())
+        return rp.can_fetch(UA, url)
+    except Exception:
+        return True
+
+
+def hae_sivun_html(url):
+    # Hakee sivun raa'an HTML:n, tai None jos sivu ei ole sallittu (robots), haku
+    # epäonnistuu, tai sisältö ei ole HTML:ää.
+    if not sivu_sallittu(url):
+        loki(f"robots.txt estää haun: {url}")
+        return None
+    try:
+        pyynto = Request(url, headers={"User-Agent": UA, "Accept-Language": "fi,en;q=0.8"})
+        with urlopen(pyynto, timeout=20) as resp:
+            if "html" not in resp.headers.get("Content-Type", "").lower():
+                return None
+            raaka = resp.read(2_000_000)  # katkaistaan 2 MB:hen
+    except Exception as e:
+        loki(f"Sivun haku epäonnistui ({url}): {e}")
+        return None
+    return raaka.decode("utf-8", "replace")
+
+
+def html_tekstiksi(html):
+    # Purkaa HTML:stä pelkän tekstin (script/style/kommentit/tagit pois).
+    html = re.sub(r"(?is)<(script|style|noscript|template)\b.*?</\1>", " ", html)
+    html = re.sub(r"(?s)<!--.*?-->", " ", html)
+    teksti = unescape(re.sub(r"(?s)<[^>]+>", " ", html))
+    teksti = re.sub(r"\s+", " ", teksti).strip()
+    return teksti[:SISALTO_MAX] or None
+
+
+def etsi_pvm(html):
+    # Kaivaa artikkelin julkaisupäivän HTML:stä (JSON-LD datePublished, meta-tagit,
+    # <time datetime>). Palauttaa muodon dd.mm.yy, tai None jos ei löydy.
+    ehdokkaat = re.findall(r'"datePublished"\s*:\s*"([^"]+)"', html)
+    nimet = r"article:published_time|datePublished|date|dc\.date|dcterms\.date|pubdate"
+    ehdokkaat += re.findall(
+        rf'<meta[^>]+(?:property|name|itemprop)=["\'](?:{nimet})["\'][^>]+content=["\']([^"\']+)["\']',
+        html, re.I)
+    ehdokkaat += re.findall(  # content ennen property/name -järjestys
+        rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name|itemprop)=["\'](?:{nimet})["\']',
+        html, re.I)
+    ehdokkaat += re.findall(r'<time[^>]+datetime=["\']([^"\']+)["\']', html, re.I)
+    for s in ehdokkaat:
+        m = re.search(r"(\d{4})-(\d{2})-(\d{2})", s)
+        if m:
+            v, kk, pp = m.groups()
+            return f"{pp}.{kk}.{v[2:]}"
+    return None
+
+
+def tiivista_sisalto(teksti):
+    # Suomenkielinen tiivistelmä haetusta sivun sisällöstä. Palauttaa None jos
+    # epäonnistuu — tiivistelmä on lisäarvo eikä saa kaataa koko ajoa.
+    prompt = (
+        "Tiivistä seuraavan verkkosivun/uutisartikkelin sisältö SUOMEKSI 3-5 "
+        "virkkeellä. Keskity olennaiseen asiasisältöön; ohita navigaatio, mainokset "
+        "ja muu epäolennainen. Älä käytä markdown-muotoilua.\n\n"
+        "SISÄLTÖ:\n" + teksti)
+    payload = json.dumps({
+        "model": MALLI_TEKSTIT, "prompt": prompt, "stream": False, "think": False,
+    }).encode("utf-8")
+    req = Request(OLLAMA_URL, data=payload, headers={"Content-Type": "application/json"})
+    try:
+        with urlopen(req, timeout=OLLAMA_AIKAKATKAISU) as resp:
+            vastaus = json.load(resp).get("response", "").strip()
+    except Exception as e:
+        loki(f"Sisällön tiivistys epäonnistui: {e}")
+        return None
+    return riisu_markdown(vastaus).strip() or None
 
 
 def haetaan(query):
@@ -148,26 +235,19 @@ def yhdista():
 
 
 def valitse_uutiset(tulokset):
-    # Pyytää mallia valitsemaan enintään VALINTOJA relevanteinta uutista ja
-    # tulkitsemaan ne. Palauttaa listan {"t","u","tulkinta"} — URL otetaan AINA
-    # datasta (tulokset[indeksi]), ei mallin tekstistä, jotta linkit ovat oikein.
+    # Valitsee mallilla enintään VALINTOJA relevanteinta uutista (vain valinta;
+    # tiivistelmä ja tulkinta tehdään myöhemmin sivun sisällön pohjalta).
+    # Palauttaa valitut raakatulokset {"t","u","s"} datasta (indeksin kautta).
     if not tulokset:
         return []
     numeroidut = "\n\n".join(
         f"[{i}] {r['t']}\n{r['u']}\n{r['s']}" for i, r in enumerate(tulokset))
     prompt = (
         "Olet EU:n digitaalista suvereniteettia seuraava analyytikko Sitralla.\n\n"
-        "Alla on uutisia numeroituna (indeksi hakasulkeissa). Tehtäväsi:\n"
-        f"1. Valitse ENINTÄÄN {VALINTOJA} relevanteinta uutista EU:n digitaalisen "
-        "suvereniteetin ja PAIKALLISTEN tekoälymallien kannalta, Suomen ja Sitran "
-        "näkökulmasta.\n"
-        "2. Kirjoita kustakin valitusta KAKSI lyhyttä SUOMENKIELISTÄ tekstiä:\n"
-        '   - "kuvaus": mistä uutisessa on kyse (1-2 virkettä).\n'
-        '   - "tulkinta": miten Sitra voi olla avuksi tai mitä mahdollisuus '
-        "tarkoittaa Suomelle (2-3 konkreettista virkettä).\n"
-        "Älä käytä markdown-muotoilua teksteissä.\n\n"
-        "Palauta pelkkä JSON muodossa:\n"
-        '{"valinnat": [{"indeksi": <numero>, "kuvaus": "<teksti>", "tulkinta": "<teksti>"}]}\n\n'
+        f"Valitse alla olevista uutisista ENINTÄÄN {VALINTOJA} relevanteinta EU:n "
+        "digitaalisen suvereniteetin ja PAIKALLISTEN tekoälymallien kannalta, Suomen "
+        "ja Sitran näkökulmasta.\n\n"
+        'Palauta pelkkä JSON: {"valinnat": [{"indeksi": <hakasulkeissa oleva numero>}]}\n\n'
         "UUTISET:\n" + numeroidut)
     payload = json.dumps({
         "model": MALLI_TEKSTIT,
@@ -190,28 +270,50 @@ def valitse_uutiset(tulokset):
         raise RuntimeError(f"Mallin vastaus ei ollut validia JSONia: {vastaus[:200]!r}")
 
     valitut = []
+    nahdyt = set()
     for v in valinnat:
         try:
             i = int(v.get("indeksi"))
         except (TypeError, ValueError):
             continue
-        # Siivotaan mallin tekstit markdownista (viesti lähetetään --raakana,
-        # jotta rungon #-otsikot säilyvät -> mallin teksti on siivottava itse).
-        kuvaus = riisu_markdown(v.get("kuvaus") or "").strip()
-        tulkinta = riisu_markdown(v.get("tulkinta") or "").strip()
-        if not (0 <= i < len(tulokset)) or not kuvaus or not tulkinta:
+        if not (0 <= i < len(tulokset)) or i in nahdyt:
             continue
-        r = tulokset[i]
-        valitut.append({"t": r["t"], "u": r["u"], "kuvaus": kuvaus, "tulkinta": tulkinta})
+        nahdyt.add(i)
+        valitut.append(tulokset[i])
         if len(valitut) >= VALINTOJA:
             break
     return valitut
 
 
+def tee_tulkinta(otsikko, sisalto):
+    # Sitra-näkökulma uutisen SISÄLLÖN (tiivistelmä tai snippetti) pohjalta.
+    # Nostaa poikkeuksen Ollama-virheessä (ydinosa viestiä).
+    prompt = (
+        "Olet EU:n digitaalista suvereniteettia ja paikallisia tekoälymalleja "
+        "seuraava analyytikko Sitralla. Alla on uutisen tiivistelmä. Kirjoita "
+        "SUOMEKSI 2-3 konkreettista virkettä siitä, miten Sitra voi olla avuksi tai "
+        "mitä mahdollisuus tarkoittaa Suomelle. Älä käytä markdown-muotoilua.\n\n"
+        f"OTSIKKO: {otsikko}\n\nTIIVISTELMÄ:\n{sisalto}")
+    payload = json.dumps({
+        "model": MALLI_TEKSTIT, "prompt": prompt, "stream": False, "think": False,
+    }).encode("utf-8")
+    req = Request(OLLAMA_URL, data=payload, headers={"Content-Type": "application/json"})
+    try:
+        with urlopen(req, timeout=OLLAMA_AIKAKATKAISU) as resp:
+            vastaus = json.load(resp).get("response", "").strip()
+    except Exception as e:
+        loki(f"Tulkinnan teko epäonnistui: {e}")
+        raise
+    tulkinta = riisu_markdown(vastaus).strip()
+    if not tulkinta:
+        raise RuntimeError("Malli palautti tyhjän tulkinnan.")
+    return tulkinta
+
+
 def muotoile(valinta):
-    # Yksi Telegram-viesti yhdestä valitusta uutisesta.
+    # Yksi Telegram-viesti: otsikko + sisällön tiivistelmä, Sitra-tulkinta, lähde.
     return (
-        f"# {valinta['t']}\n{valinta['kuvaus']}\n\n"
+        f"# {valinta['t']}\n{valinta['runko']}\n\n"
         f"# Sitra\n{valinta['tulkinta']}\n\n"
         f"Lähde:\n{valinta['u']}"
     )
@@ -252,12 +354,21 @@ def main():
         poista_valiaika()
         return
 
-    # Lähetä jokainen valittu uutinen OMANA viestinään ja merkitse lähetetyksi
-    # heti onnistumisen jälkeen (osittainen ajo ei lähetä samaa uudestaan).
-    for v in valinnat:
-        laheta(muotoile(v))
-        tallenna_muistiinpano(v, pvm)   # arkistoi vaultiin + dedup-merkintä
-        print(f"Lähetetty: {v['t'][:60]}")
+    # Jokaiselle valitulle: 1) lue sivu ja tee tiivistelmä, 2) tulkitse Sitran
+    # rooli sisällön pohjalta, 3) lähetä Telegramiin, 4) arkistoi vaultiin
+    # (dedup-merkintä). Merkitään lähetetyksi vasta onnistuneen lähetyksen jälkeen.
+    for r in valinnat:
+        html = hae_sivun_html(r["u"])
+        sisalto = html_tekstiksi(html) if html else None
+        tiivistelma = tiivista_sisalto(sisalto) if sisalto else None
+        runko = tiivistelma or r["s"]          # sivun tiivistelmä, fallback snippettiin
+        tulkinta = tee_tulkinta(r["t"], runko)  # Sitra-näkökulma sisällön pohjalta
+        # Julkaisupäivä sisällöstä; fallback hakupäivään jos ei löydy.
+        julkaisu_pvm = (etsi_pvm(html) if html else None) or pvm
+        valinta = {"t": r["t"], "u": r["u"], "runko": runko, "tulkinta": tulkinta}
+        laheta(muotoile(valinta))
+        tallenna_muistiinpano(valinta, julkaisu_pvm)
+        print(f"Lähetetty: {r['t'][:60]} (pvm: {julkaisu_pvm}, sisältö: {'kyllä' if tiivistelma else 'snippet'})")
 
     poista_valiaika()
     print(f"[OK] Lähetetty {len(valinnat)} viestiä")
