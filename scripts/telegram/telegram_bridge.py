@@ -3,8 +3,14 @@
 #
 # pi:ssä ei ole hermesin kaltaista gateway-tilaa, joten tämä prosessi toimii
 # siltana: kuuntelee Telegramia long-pollauksella ja ajaa jokaista viestiä
-# varten pi:n headless-tilassa (`pi -p`). Keskustelukonteksti säilyy per chat
-# `--session`-lipulla. Vastaus lähetetään takaisin Telegramiin.
+# varten pi:n headless-tilassa (`pi --mode json`). Keskustelukonteksti säilyy
+# per chat `--session-id`-lipulla (pi luo session jos sitä ei ole ja jatkaa
+# olemassa olevaa). Vastaus poimitaan JSON-tapahtumavirran message_end:istä ja
+# lähetetään takaisin Telegramiin.
+#
+# HUOM pi-versio: tämä olettaa npm:n @earendil-works/pi-coding-agent -pi:n.
+# Vanha `pi -p` (text) korvattiin `--mode json`:lla (ks. pi.dev/docs/latest/json),
+# koska se antaa rakenteisen, luotettavasti jäsennettävän tulosteen.
 #
 # TURVA: pi voi ajaa bashia ja kirjoittaa /vault:iin, joten vain
 # TELEGRAM_SALLITUT_CHATIT-listan chatit pääsevät läpi. Ilman listaa silta ei
@@ -18,7 +24,7 @@
 #   PI_MALLI                  pakota malli `--model`-lipulla (oletus: tyhjä = pi
 #                             valitsee models.json:n ainoan mallin)
 
-import json, os, re, sys, time, glob, subprocess
+import json, os, re, sys, time, subprocess
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from telegram_api import api_kutsu, laheta_viesti, riisu_markdown
@@ -29,10 +35,11 @@ PI_TYOHAKEMISTO = os.environ.get("PI_TYOHAKEMISTO", "/vault")
 PI_AIKAKATKAISU = int(os.environ.get("PI_AIKAKATKAISU", "600"))
 PI_MALLI = os.environ.get("PI_MALLI", "").strip()
 
-# pi tallentaa sessiot tänne (yksi .jsonl per keskustelu). --session avaa vain
-# olemassa olevan session, joten pidämme itse kirjaa per chat -> sessiopolku.
-SESSIOT_JUURI = os.path.expanduser("~/.pi/agent/sessions")
-SESSIO_KARTTA = os.path.expanduser("~/.pi/chats/sessiot.json")
+# Per-chat keskustelu pidetään erillään vakaalla session-id:llä. `--session-id`
+# luo session jos sitä ei ole ja jatkaa olemassa olevaa, joten emme tarvitse
+# omaa kirjanpitoa sessiotiedostoista.
+def sessio_id(chat_id):
+    return f"tg-{chat_id}"
 
 # YouTube-linkin tunnistus viestistä. Jos linkki löytyy, silta lataa sen
 # transkription deterministisesti download_transcript.sh:lla ENNEN kuin viesti
@@ -81,24 +88,6 @@ def naytä_kirjoittaa(chat_id):
         pass
 
 
-def lataa_kartta():
-    try:
-        with open(SESSIO_KARTTA) as f:
-            return json.load(f)
-    except (FileNotFoundError, ValueError):
-        return {}
-
-
-def tallenna_kartta(kartta):
-    os.makedirs(os.path.dirname(SESSIO_KARTTA), exist_ok=True)
-    with open(SESSIO_KARTTA, "w") as f:
-        json.dump(kartta, f, ensure_ascii=False, indent=2)
-
-
-def kaikki_sessiotiedostot():
-    return set(glob.glob(os.path.join(SESSIOT_JUURI, "**", "*.jsonl"), recursive=True))
-
-
 def lataa_transkriptio(url):
     # Ajaa download_transcript.sh:n annetulla linkillä ja palauttaa luodun
     # transkriptiotiedoston polun, tai None jos lataus epäonnistui. Skripti
@@ -143,22 +132,45 @@ def esikasittele(teksti):
     return f"{ohje}\n\n{teksti}"
 
 
-def aja_pi(chat_id, teksti):
-    kartta = lataa_kartta()
-    sessio = kartta.get(chat_id)
-    jatketaan = bool(sessio) and os.path.exists(sessio)
+def poimi_vastaus(stdout):
+    # pi --mode json tulostaa istunnon otsikkorivin + jokaisen tapahtuman omalla
+    # JSON-rivillään (JSONL). Lopullinen vastaus on viimeisen assistant-roolisen
+    # message_end-tapahtuman tekstilohkot. Palauttaa (teksti, virhe), joista
+    # toinen on None.
+    teksti, virhe = None, None
+    for rivi in stdout.splitlines():
+        rivi = rivi.strip()
+        if not rivi:
+            continue
+        try:
+            tapahtuma = json.loads(rivi)
+        except ValueError:
+            continue  # ei-JSON-roska (ei pitäisi esiintyä json-tilassa)
+        if tapahtuma.get("type") != "message_end":
+            continue
+        viesti = tapahtuma.get("message") or {}
+        if viesti.get("role") != "assistant":
+            continue
+        if viesti.get("stopReason") in ("error", "aborted"):
+            virhe = viesti.get("errorMessage") or f"pyyntö {viesti.get('stopReason')}"
+            teksti = None
+            continue
+        osat = [c.get("text", "") for c in (viesti.get("content") or [])
+                if c.get("type") == "text"]
+        koottu = "".join(osat).strip()
+        if koottu:
+            teksti, virhe = koottu, None
+    return teksti, virhe
 
-    komento = ["pi", "-p"]
+
+def aja_pi(chat_id, teksti):
+    # --session-id pitää tämän chatin keskustelun erillään ja jatkaa sitä
+    # (luodaan jos puuttuu). --mode json antaa rakenteisen tulosteen.
+    komento = ["pi", "--mode", "json", "--session-id", sessio_id(chat_id)]
     if PI_MALLI:
         komento += ["--model", PI_MALLI]
-    if jatketaan:
-        # Jatka tämän chatin aiempaa keskustelua sessiopolun kautta.
-        komento += ["--session", sessio]
     komento += [teksti]
 
-    # Uutta sessiota luotaessa otetaan tilannekuva, jotta tunnistamme juuri
-    # luodun .jsonl:n (silta käsittelee viestit yksitellen -> ei kilpailutilannetta).
-    ennen = set() if jatketaan else kaikki_sessiotiedostot()
     try:
         tulos = subprocess.run(
             komento, cwd=PI_TYOHAKEMISTO,
@@ -169,19 +181,11 @@ def aja_pi(chat_id, teksti):
     except FileNotFoundError:
         return "Virhe: pi-komentoa ei löydy kontista."
 
-    if not jatketaan:
-        uudet = kaikki_sessiotiedostot() - ennen
-        if uudet:
-            kartta[chat_id] = max(uudet, key=os.path.getmtime)
-            tallenna_kartta(kartta)
-        else:
-            loki(f"Varoitus: uutta sessiotiedostoa ei löytynyt chatille {chat_id}.")
-
-    vastaus = (tulos.stdout or "").strip()
-    if tulos.returncode != 0:
-        virhe = (tulos.stderr or "").strip()
-        loki(f"pi virhe (rc={tulos.returncode}): {virhe}")
-        return vastaus or f"pi epäonnistui: {virhe[:500]}"
+    vastaus, virhe = poimi_vastaus(tulos.stdout or "")
+    if tulos.returncode != 0 or virhe:
+        stderr = (tulos.stderr or "").strip()
+        loki(f"pi virhe (rc={tulos.returncode}): {virhe or stderr}")
+        return vastaus or f"pi epäonnistui: {(virhe or stderr)[:500]}"
     return vastaus or "(pi ei palauttanut tekstiä)"
 
 
