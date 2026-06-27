@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # seuraaja.py — aiheen seuranta ajassa. Ajastus hoidetaan cron_hallinta-skriptillä;
 # cron ajaa "seuraaja.py aja <nimi>", joka:
-#   1) ajaa pi:n headless-tilassa aiheen kehotteella (pi käyttää itse staan-web-searchia),
+#   1) ajaa pi:n headless-tilassa aiheen kehotteella (pi käyttää itse staan-verkkohakua),
 #   2) vertaa tulosta aiempiin (historia) ja
 #   3) lähettää tiiviin päivityksen Telegramiin.
 #
@@ -126,7 +126,7 @@ def aja_pi_headless(prompt, session_id):
 def rakenna_prompt(aihe, historia):
     osat = [
         f"Tehtäväsi on seurata seuraavaa aihetta ja tuottaa tiivis päivitys suomeksi:\n{aihe}",
-        "Käytä staan-web-search -skilliä ajantasaisen tiedon hakuun. Rajaa haku tarvittaessa "
+        "Käytä staan-verkkohaku -skilliä ajantasaisen tiedon hakuun. Rajaa haku tarvittaessa "
         "luotettaviin lähteisiin (esim. verkkokaupat --include-domains). Mainitse lähde-URLit. "
         "Jos jokin tieto (esim. hinta) on epävarma tai ei löydy, sano se suoraan äläkä arvaa.",
     ]
