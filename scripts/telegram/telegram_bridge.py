@@ -24,7 +24,7 @@
 #   PI_MALLI                  pakota malli `--model`-lipulla (oletus: tyhjä = pi
 #                             valitsee models.json:n ainoan mallin)
 
-import json, os, re, sys, time, subprocess
+import json, os, re, sys, time, signal, subprocess, threading
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from telegram_api import api_kutsu, laheta_viesti, riisu_markdown
@@ -94,6 +94,9 @@ YOUTUBE_LATAUS = os.environ.get("YOUTUBE_LATAUS", "1").strip().lower() not in ("
 # jotta pi tietää KENEN kanssa puhuu (monikäyttäjäidentiteetit, esim. Närhisulka).
 # Oletuksena pois -> yhden käyttäjän identiteetit (esim. mactonus) ennallaan.
 KERRO_LAHETTAJA = os.environ.get("KERRO_LAHETTAJA", "0").strip().lower() in ("1", "true", "kyllä", "yes")
+# Kun päällä (oletus), silta ilmoittaa Telegramiin jokaisesta pi:n työkalukutsusta
+# heti sen alkaessa (tool_execution_start). Vaimennettavissa KERRO_TYOKALUT=0.
+KERRO_TYOKALUT = os.environ.get("KERRO_TYOKALUT", "1").strip().lower() not in ("0", "false", "ei", "no")
 
 
 def loki(viesti):
@@ -166,60 +169,105 @@ def esikasittele(teksti):
     return f"{ohje}\n\n{teksti}"
 
 
-def poimi_vastaus(stdout):
-    # pi --mode json tulostaa istunnon otsikkorivin + jokaisen tapahtuman omalla
-    # JSON-rivillään (JSONL). Lopullinen vastaus on viimeisen assistant-roolisen
-    # message_end-tapahtuman tekstilohkot. Palauttaa (teksti, virhe), joista
-    # toinen on None.
-    teksti, virhe = None, None
-    for rivi in stdout.splitlines():
-        rivi = rivi.strip()
-        if not rivi:
-            continue
-        try:
-            tapahtuma = json.loads(rivi)
-        except ValueError:
-            continue  # ei-JSON-roska (ei pitäisi esiintyä json-tilassa)
-        if tapahtuma.get("type") != "message_end":
-            continue
-        viesti = tapahtuma.get("message") or {}
-        if viesti.get("role") != "assistant":
-            continue
-        if viesti.get("stopReason") in ("error", "aborted"):
-            virhe = viesti.get("errorMessage") or f"pyyntö {viesti.get('stopReason')}"
-            teksti = None
-            continue
-        osat = [c.get("text", "") for c in (viesti.get("content") or [])
-                if c.get("type") == "text"]
-        koottu = "".join(osat).strip()
-        if koottu:
-            teksti, virhe = koottu, None
-    return teksti, virhe
+def muotoile_tyokalu(toolName, args):
+    # Lyhyt, ihmisluettava kuvaus työkalukutsusta Telegramiin, esim.
+    # "🔧 bash: python3 .../n8n_mcp.py lista" tai "🔧 read: /vault/...".
+    detalji = ""
+    if isinstance(args, dict):
+        for avain in ("command", "path", "file_path", "url", "pattern", "query"):
+            if args.get(avain):
+                detalji = str(args[avain])
+                break
+        else:
+            for arvo in args.values():
+                if arvo not in (None, "", [], {}):
+                    detalji = str(arvo)
+                    break
+    teksti = f"🔧 {toolName or 'työkalu'}"
+    if detalji:
+        detalji = " ".join(detalji.split())
+        if len(detalji) > 80:
+            detalji = detalji[:79] + "…"
+        teksti += f": {detalji}"
+    return teksti
 
 
 def aja_pi(chat_id, teksti):
     # --session-id pitää tämän chatin keskustelun erillään ja jatkaa sitä
-    # (luodaan jos puuttuu). --mode json antaa rakenteisen tulosteen.
+    # (luodaan jos puuttuu). --mode json antaa rakenteisen JSONL-tapahtumavirran,
+    # joka luetaan rivi kerrallaan (striimaus), jotta työkalukutsut voidaan
+    # ilmoittaa Telegramiin heti niiden alkaessa (tool_execution_start). Lopullinen
+    # vastaus poimitaan viimeisen assistant-roolisen message_end-tapahtuman teksteistä.
     komento = ["pi", "--mode", "json", "--session-id", sessio_id(chat_id)]
     if PI_MALLI:
         komento += ["--model", PI_MALLI]
     komento += [teksti]
 
     try:
-        tulos = subprocess.run(
+        proc = subprocess.Popen(
             komento, cwd=PI_TYOHAKEMISTO,
-            capture_output=True, text=True, timeout=PI_AIKAKATKAISU,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1, start_new_session=True,
         )
-    except subprocess.TimeoutExpired:
-        return "Vastaus aikakatkaistiin (malli oli liian hidas)."
     except FileNotFoundError:
         return "Virhe: pi-komentoa ei löydy kontista."
 
-    vastaus, virhe = poimi_vastaus(tulos.stdout or "")
-    if tulos.returncode != 0 or virhe:
-        stderr = (tulos.stderr or "").strip()
-        loki(f"pi virhe (rc={tulos.returncode}): {virhe or stderr}")
-        return vastaus or f"pi epäonnistui: {(virhe or stderr)[:500]}"
+    # Aikakatkaisu: tapa koko prosessiryhmä (pi + sen lapsiprosessit), jotta
+    # stdout-putki sulkeutuu heti ja lukusilmukka vapautuu. Pelkkä proc.kill()
+    # ei riittäisi, koska lapsenlapset pitäisivät putken auki.
+    tila = {"aikakatkaistu": False}
+
+    def _tapa():
+        tila["aikakatkaistu"] = True
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()
+
+    vahti = threading.Timer(PI_AIKAKATKAISU, _tapa)
+    vahti.start()
+
+    vastaus, virhe, rivit = None, None, []
+    try:
+        for rivi in proc.stdout:
+            rivit.append(rivi)
+            rivi = rivi.strip()
+            if not rivi:
+                continue
+            try:
+                tapahtuma = json.loads(rivi)
+            except ValueError:
+                continue  # ei-JSON-roska (esim. stderr-varoitus)
+            tyyppi = tapahtuma.get("type")
+            if tyyppi == "tool_execution_start":
+                if KERRO_TYOKALUT:
+                    args = tapahtuma.get("args", tapahtuma.get("arguments"))
+                    laheta_viesti(chat_id,
+                                  muotoile_tyokalu(tapahtuma.get("toolName"), args),
+                                  loki=loki)
+            elif tyyppi == "message_end":
+                viesti = tapahtuma.get("message") or {}
+                if viesti.get("role") != "assistant":
+                    continue
+                if viesti.get("stopReason") in ("error", "aborted"):
+                    virhe = viesti.get("errorMessage") or f"pyyntö {viesti.get('stopReason')}"
+                    vastaus = None
+                    continue
+                osat = [c.get("text", "") for c in (viesti.get("content") or [])
+                        if c.get("type") == "text"]
+                koottu = "".join(osat).strip()
+                if koottu:
+                    vastaus, virhe = koottu, None
+    finally:
+        vahti.cancel()
+    rc = proc.wait()
+
+    if tila["aikakatkaistu"]:
+        return "Vastaus aikakatkaistiin (malli oli liian hidas)."
+    if rc != 0 or virhe:
+        häntä = "".join(rivit).strip()[-500:]
+        loki(f"pi virhe (rc={rc}): {virhe or häntä}")
+        return vastaus or f"pi epäonnistui: {(virhe or häntä)[:500]}"
     return vastaus or "(pi ei palauttanut tekstiä)"
 
 
