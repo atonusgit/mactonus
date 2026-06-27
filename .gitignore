@@ -16,6 +16,11 @@ __pycache__
 scripts/telegram/sessio_suffiksit.json
 scripts/telegram/sessio_suffiksit.json.tmp
 
+# Ajastus- ja aihe-seuraaja-skillien ajonaikaiset artefaktit (pi luo ajossa)
+conf/cron/aj_*
+scripts/aihe_seuraaja/aiheet/
+scripts/aihe_seuraaja/historia/
+
 paikallinen-puheassistentti
 
 # Närhisulka on oma itsenäinen projektinsa -> ei versioida mactonuksen mukana
