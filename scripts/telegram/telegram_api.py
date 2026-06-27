@@ -61,11 +61,16 @@ def riisu_markdown(teksti):
     return teksti
 
 
-def laheta_viesti(chat_id, teksti, loki=print):
+def laheta_viesti(chat_id, teksti, loki=print, parse_mode=None):
     # Telegram rajoittaa 4096 merkkiin -> paloitellaan turvallisesti.
+    # parse_mode (esim. "HTML") mahdollistaa muotoilun, kuten <code>monospace</code>.
+    # Oletus None = pelkkä teksti (entinen käyttäytyminen).
     teksti = teksti or "(tyhjä vastaus)"
     for i in range(0, len(teksti), 4000):
+        data = {"chat_id": chat_id, "text": teksti[i:i + 4000]}
+        if parse_mode:
+            data["parse_mode"] = parse_mode
         try:
-            api_kutsu("sendMessage", {"chat_id": chat_id, "text": teksti[i:i + 4000]})
+            api_kutsu("sendMessage", data)
         except Exception as e:
             loki(f"Lähetys epäonnistui chatille {chat_id}: {e}")

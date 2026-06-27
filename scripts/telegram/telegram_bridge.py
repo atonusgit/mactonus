@@ -24,7 +24,7 @@
 #   PI_MALLI                  pakota malli `--model`-lipulla (oletus: tyhjä = pi
 #                             valitsee models.json:n ainoan mallin)
 
-import json, os, re, sys, time, signal, subprocess, threading
+import html, json, os, re, sys, time, signal, subprocess, threading
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from telegram_api import api_kutsu, laheta_viesti, riisu_markdown
@@ -170,9 +170,9 @@ def esikasittele(teksti):
 
 
 def muotoile_tyokalu(toolName, args):
-    # Kaksirivinen, ihmisluettava ilmoitus Telegramiin:
+    # Kaksirivinen, ihmisluettava ilmoitus Telegramiin (parse_mode=HTML):
     #   🔧 Käytän työkalua
-    #   <varsinainen tieto, esim. komento tai polku>
+    #   <code>varsinainen tieto monospacena</code>
     # Jos työkalulla ei ole selkeää dataa, näytetään nimi otsikkorivillä.
     detalji = ""
     if isinstance(args, dict):
@@ -189,8 +189,9 @@ def muotoile_tyokalu(toolName, args):
         detalji = " ".join(detalji.split())
         if len(detalji) > 200:
             detalji = detalji[:199] + "…"
-        return f"🔧 Käytän työkalua\n{detalji}"
-    return f"🔧 Käytän työkalua ({toolName})" if toolName else "🔧 Käytän työkalua"
+        return f"🔧 Käytän työkalua\n<code>{html.escape(detalji)}</code>"
+    return (f"🔧 Käytän työkalua ({html.escape(toolName)})" if toolName
+            else "🔧 Käytän työkalua")
 
 
 def aja_pi(chat_id, teksti):
@@ -245,7 +246,7 @@ def aja_pi(chat_id, teksti):
                     args = tapahtuma.get("args", tapahtuma.get("arguments"))
                     laheta_viesti(chat_id,
                                   muotoile_tyokalu(tapahtuma.get("toolName"), args),
-                                  loki=loki)
+                                  loki=loki, parse_mode="HTML")
             elif tyyppi == "message_end":
                 viesti = tapahtuma.get("message") or {}
                 if viesti.get("role") != "assistant":
