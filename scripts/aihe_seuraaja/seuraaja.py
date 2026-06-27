@@ -140,8 +140,11 @@ def rakenna_prompt(aihe, historia):
 # ---------- Telegram ----------
 
 def laheta_telegram(viesti, chat=None):
+    # Ei --raaka: pi:n vapaamuotoinen vastaus riisutaan markdownista (riisu_markdown),
+    # jotta Telegramissa näkyy siisti plain-teksti — sama käyttäytyminen kuin
+    # interaktiivisessa sillassa (telegram_bridge.py).
     laheta = os.path.join(TELEGRAM_DIR, "laheta.py")
-    cmd = [sys.executable, laheta, "--raaka", viesti]
+    cmd = [sys.executable, laheta, viesti]
     if chat:
         cmd += ["--chat", str(chat)]
     subprocess.run(cmd, check=False)
