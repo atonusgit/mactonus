@@ -12,6 +12,10 @@ conf/ssh/*
 tmp
 __pycache__
 
+# Telegram-sillan ajonaikainen per-chat session-suffiksitila (ei versioida)
+scripts/telegram/sessio_suffiksit.json
+scripts/telegram/sessio_suffiksit.json.tmp
+
 paikallinen-puheassistentti
 
 # Närhisulka on oma itsenäinen projektinsa -> ei versioida mactonuksen mukana

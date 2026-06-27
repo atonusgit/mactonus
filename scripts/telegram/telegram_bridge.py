@@ -35,11 +35,45 @@ PI_TYOHAKEMISTO = os.environ.get("PI_TYOHAKEMISTO", "/vault")
 PI_AIKAKATKAISU = int(os.environ.get("PI_AIKAKATKAISU", "600"))
 PI_MALLI = os.environ.get("PI_MALLI", "").strip()
 
-# Per-chat keskustelu pidetään erillään vakaalla session-id:llä. `--session-id`
-# luo session jos sitä ei ole ja jatkaa olemassa olevaa, joten emme tarvitse
-# omaa kirjanpitoa sessiotiedostoista.
+# Telegram-viestit, jotka aloittavat uuden keskustelun (tuore pi-session-id).
+NOLLAUS_KOMENNOT = {"/uusi", "/reset", "/nollaa", "uusi keskustelu"}
+# Per-chat session-suffiksi tallennetaan tähän; suffiksin kasvatus = uusi sessio.
+SUFFIKSI_TIEDOSTO = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 "sessio_suffiksit.json")
+
+
+# Per-chat keskustelu pidetään erillään session-id:llä. Suffiksi mahdollistaa
+# "uuden keskustelun" Telegramista: NOLLAUS_KOMENNOT kasvattaa suffiksia, jolloin
+# seuraava viesti saa tuoreen session-id:n -> pi luo uuden session ja lukee mm.
+# skill-katalogin uudelleen. `--session-id` luo session jos sitä ei ole ja jatkaa
+# olemassa olevaa.
+def _lue_suffiksit():
+    try:
+        with open(SUFFIKSI_TIEDOSTO, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def _tallenna_suffiksit(suffiksit):
+    # Atominen kirjoitus (temp + rename), jottei tiedosto korruptoidu.
+    tmp = f"{SUFFIKSI_TIEDOSTO}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(suffiksit, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, SUFFIKSI_TIEDOSTO)
+
+
+def nollaa_sessio(chat_id):
+    # Kasvata chatin suffiksia -> seuraava viesti aloittaa tuoreen session.
+    suffiksit = _lue_suffiksit()
+    suffiksit[chat_id] = int(suffiksit.get(chat_id, 1)) + 1
+    _tallenna_suffiksit(suffiksit)
+    return suffiksit[chat_id]
+
+
 def sessio_id(chat_id):
-    return f"tg-{chat_id}"
+    suffiksi = _lue_suffiksit().get(chat_id, 1)
+    return f"tg-{chat_id}-{suffiksi}"
 
 # YouTube-linkin tunnistus viestistä. Jos linkki löytyy, silta lataa sen
 # transkription deterministisesti download_transcript.sh:lla ENNEN kuin viesti
@@ -228,6 +262,11 @@ def main():
             if chat_id not in SALLITUT:
                 loki(f"Estetty chat {chat_id}: {teksti[:50]!r}")
                 laheta_viesti(chat_id, "Ei käyttöoikeutta.", loki=loki)
+                continue
+            if teksti.strip().lower() in NOLLAUS_KOMENNOT:
+                suffiksi = nollaa_sessio(chat_id)
+                loki(f"Sessio nollattu chatille {chat_id} -> suffiksi {suffiksi}")
+                laheta_viesti(chat_id, "🆕 Aloitettu uusi keskustelu.", loki=loki)
                 continue
             loki(f"Viesti {chat_id}: {teksti[:80]!r}")
             naytä_kirjoittaa(chat_id)
