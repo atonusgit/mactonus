@@ -170,8 +170,10 @@ def esikasittele(teksti):
 
 
 def muotoile_tyokalu(toolName, args):
-    # Lyhyt, ihmisluettava kuvaus työkalukutsusta Telegramiin, esim.
-    # "🔧 bash: python3 .../n8n_mcp.py lista" tai "🔧 read: /vault/...".
+    # Kaksirivinen, ihmisluettava ilmoitus Telegramiin:
+    #   🔧 Käytän työkalua
+    #   <varsinainen tieto, esim. komento tai polku>
+    # Jos työkalulla ei ole selkeää dataa, näytetään nimi otsikkorivillä.
     detalji = ""
     if isinstance(args, dict):
         for avain in ("command", "path", "file_path", "url", "pattern", "query"):
@@ -183,13 +185,12 @@ def muotoile_tyokalu(toolName, args):
                 if arvo not in (None, "", [], {}):
                     detalji = str(arvo)
                     break
-    teksti = f"🔧 {toolName or 'työkalu'}"
     if detalji:
         detalji = " ".join(detalji.split())
-        if len(detalji) > 80:
-            detalji = detalji[:79] + "…"
-        teksti += f": {detalji}"
-    return teksti
+        if len(detalji) > 200:
+            detalji = detalji[:199] + "…"
+        return f"🔧 Käytän työkalua\n{detalji}"
+    return f"🔧 Käytän työkalua ({toolName})" if toolName else "🔧 Käytän työkalua"
 
 
 def aja_pi(chat_id, teksti):
