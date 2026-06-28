@@ -86,7 +86,8 @@ LATAA_SKRIPTI = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "youtube", "download_transcript.sh",
 )
-LATAUS_AIKAKATKAISU = int(os.environ.get("YOUTUBE_AIKAKATKAISU", "180"))
+# Sisältää litteroinnin haun JA suomenkielisen tiivistyksen (Ollama) -> reilumpi raja.
+LATAUS_AIKAKATKAISU = int(os.environ.get("YOUTUBE_AIKAKATKAISU", "600"))
 # YouTube-litterointi on oletuksena päällä. Voidaan kytkeä pois esim.
 # vaultittomassa kontissa (YOUTUBE_LATAUS=0), jolloin linkkejä ei käsitellä.
 YOUTUBE_LATAUS = os.environ.get("YOUTUBE_LATAUS", "1").strip().lower() not in ("0", "false", "ei", "no")

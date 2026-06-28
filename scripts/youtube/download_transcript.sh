@@ -55,4 +55,10 @@ fi
 } > "$FINAL_MD"
 
 rm -rf "$TEMP_DIR"
+
+# Tiivistä litterointi suomeksi (Ollama) ja kirjoita tiivistelmä + litterointi samaan
+# tiedostoon. Best-effort: litterointi on jo tallessa, joten jos Ollama ei vastaa,
+# tiedosto jää litteroinniksi sellaisenaan.
+python3 "$(dirname "$0")/tiivista_youtube.py" "$FINAL_MD" || echo "Tiivistys ohitettiin (Ollama ei vastannut)."
+
 echo "Saved to: $FINAL_MD"
