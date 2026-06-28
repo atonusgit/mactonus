@@ -21,6 +21,10 @@ conf/cron/aj_*
 scripts/aihe_seuraaja/aiheet/
 scripts/aihe_seuraaja/historia/
 
+# pi<->vault-synkan ajonaikainen tila
+scripts/pi_vault_sync/.tila.json
+scripts/pi_vault_sync/.tila.json.tmp
+
 paikallinen-puheassistentti
 
 # Närhisulka on oma itsenäinen projektinsa -> ei versioida mactonuksen mukana
