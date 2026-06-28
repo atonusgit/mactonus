@@ -20,6 +20,7 @@ services:
       - "./logs/eu_digital_sovereignty:/tmp/eu_digital_sovereignty"
       - "./logs/telegram:/tmp/telegram"
       - "./logs/pi_vault_sync:/tmp/pi_vault_sync"
+      - "./logs/muisti:/tmp/muisti"
       - "./.pi:/root/.pi"
     env_file:
       - .env

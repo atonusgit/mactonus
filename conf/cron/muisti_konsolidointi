@@ -1,0 +1,2 @@
+PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/sbin:/bin
+0 4 * * * root python3 /root/scripts/muisti/muisti.py aja >> /tmp/muisti/out.log 2>&1
