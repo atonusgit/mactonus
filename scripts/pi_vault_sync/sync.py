@@ -26,7 +26,7 @@ TELEGRAM_DIR = os.path.join(SCRIPTS_DIR, "telegram")
 TILA_TIEDOSTO = os.path.join(PERUS, ".tila.json")
 
 # Synkronoitavat ylätason dokumentit (suhteessa PI_AGENT / VAULT_PI -juureen).
-TOP_DOKUMENTIT = ["MEMORY.md", "SOUL.md", "USER.md", "AGENTS.md", "TOOLS.md"]
+TOP_DOKUMENTIT = ["MEMORY.md", "SOUL.md", "USER.md", "AGENTS.md"]
 
 ILMOITA = os.environ.get("PI_VAULT_SYNC_ILMOITA", "1").strip().lower() not in ("0", "false", "ei", "no")
 
