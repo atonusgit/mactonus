@@ -2,10 +2,8 @@
 # EU Digital Sovereignty Daily - hae Staanista, tiivistä Ollamalla, lähetä Telegramiin.
 import hashlib, json, os, re, subprocess, sys
 from datetime import date
-from html import unescape
 from urllib.request import Request, urlopen
-from urllib.parse import quote, urlparse
-from urllib.robotparser import RobotFileParser
+from urllib.parse import quote
 
 SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TELEGRAM_DIR = os.path.join(SCRIPTS_DIR, "telegram")
@@ -18,13 +16,13 @@ sys.path.insert(0, SCRIPTS_DIR)
 from telegram_api import peri_kontin_ymparisto, riisu_markdown
 peri_kontin_ymparisto()
 from config import MALLI_TEKSTIT, OLLAMA_URL, OLLAMA_AIKAKATKAISU  # jaetusta configista
+# Verkkokaavinta jaetaan verkkosivutallennuksen kanssa (scripts/verkko_apu.py).
+from verkko_apu import sivu_sallittu, hae_html, html_tekstiksi, etsi_julkaisupvm
 
 KEY = os.environ.get("STAAN_API_KEY", "")
 LIMIT = 5         # tuloksia per hakutermi, ja mallille tarjottava ehdokasmäärä
 VALINTOJA = 2     # montako uutista malli valitsee ja tulkitsee viestiin
 SISALTO_MAX = 12000  # montako merkkiä haetusta sivusta syötetään tiivistäjälle
-# Selaimen User-Agent sivujen hakuun (jotkin sivut torjuvat oletus-urllibin).
-UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
 # Yhden ajon hakutulosten välitallennus daily.py:n viereen tmp/-kansioon
 # (.gitignoren 'tmp'-sääntö ohittaa). Jos lähetys epäonnistuu, tulokset jäävät
@@ -116,65 +114,24 @@ def tallenna_muistiinpano(valinta):
         f.write(sisalto)
 
 
-def sivu_sallittu(url):
-    # robots.txt: kunnioitetaan sivuston sääntöjä ("mikäli verkkosivu sallii").
-    # Virhe / ei robots.txt:ää -> sallitaan (lenient).
-    try:
-        p = urlparse(url)
-        robots = f"{p.scheme}://{p.netloc}/robots.txt"
-        with urlopen(Request(robots, headers={"User-Agent": UA}), timeout=8) as r:
-            rp = RobotFileParser()
-            rp.parse(r.read().decode("utf-8", "replace").splitlines())
-        return rp.can_fetch(UA, url)
-    except Exception:
-        return True
-
-
 def hae_sivun_html(url):
-    # Hakee sivun raa'an HTML:n, tai None jos sivu ei ole sallittu (robots), haku
-    # epäonnistuu, tai sisältö ei ole HTML:ää.
+    # Hakee sivun raa'an HTML:n robots.txt:ää kunnioittaen (verkko_apu), tai None.
     if not sivu_sallittu(url):
         loki(f"robots.txt estää haun: {url}")
         return None
-    try:
-        pyynto = Request(url, headers={"User-Agent": UA, "Accept-Language": "fi,en;q=0.8"})
-        with urlopen(pyynto, timeout=20) as resp:
-            if "html" not in resp.headers.get("Content-Type", "").lower():
-                return None
-            raaka = resp.read(2_000_000)  # katkaistaan 2 MB:hen
-    except Exception as e:
-        loki(f"Sivun haku epäonnistui ({url}): {e}")
-        return None
-    return raaka.decode("utf-8", "replace")
-
-
-def html_tekstiksi(html):
-    # Purkaa HTML:stä pelkän tekstin (script/style/kommentit/tagit pois).
-    html = re.sub(r"(?is)<(script|style|noscript|template)\b.*?</\1>", " ", html)
-    html = re.sub(r"(?s)<!--.*?-->", " ", html)
-    teksti = unescape(re.sub(r"(?s)<[^>]+>", " ", html))
-    teksti = re.sub(r"\s+", " ", teksti).strip()
-    return teksti[:SISALTO_MAX] or None
+    html = hae_html(url)
+    if html is None:
+        loki(f"Sivun haku epäonnistui tai ei HTML:ää: {url}")
+    return html
 
 
 def etsi_pvm(html):
-    # Kaivaa artikkelin julkaisupäivän HTML:stä (JSON-LD datePublished, meta-tagit,
-    # <time datetime>). Palauttaa muodon dd.mm.yy, tai None jos ei löydy.
-    ehdokkaat = re.findall(r'"datePublished"\s*:\s*"([^"]+)"', html)
-    nimet = r"article:published_time|datePublished|date|dc\.date|dcterms\.date|pubdate"
-    ehdokkaat += re.findall(
-        rf'<meta[^>]+(?:property|name|itemprop)=["\'](?:{nimet})["\'][^>]+content=["\']([^"\']+)["\']',
-        html, re.I)
-    ehdokkaat += re.findall(  # content ennen property/name -järjestys
-        rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name|itemprop)=["\'](?:{nimet})["\']',
-        html, re.I)
-    ehdokkaat += re.findall(r'<time[^>]+datetime=["\']([^"\']+)["\']', html, re.I)
-    for s in ehdokkaat:
-        m = re.search(r"(\d{4})-(\d{2})-(\d{2})", s)
-        if m:
-            v, kk, pp = m.groups()
-            return f"{pp}.{kk}.{v[2:]}"
-    return None
+    # Julkaisupäivä dd.mm.yy-muodossa (verkko_apu palauttaa ISO:n), tai None.
+    iso = etsi_julkaisupvm(html)
+    if not iso:
+        return None
+    v, kk, pp = iso.split("-")
+    return f"{pp}.{kk}.{v[2:]}"
 
 
 def tiivista_sisalto(teksti):
@@ -363,7 +320,7 @@ def main():
     # (dedup-merkintä). Merkitään lähetetyksi vasta onnistuneen lähetyksen jälkeen.
     for r in valinnat:
         html = hae_sivun_html(r["u"])
-        sisalto = html_tekstiksi(html) if html else None
+        sisalto = html_tekstiksi(html, SISALTO_MAX) if html else None
         tiivistelma = tiivista_sisalto(sisalto) if sisalto else None
         runko = tiivistelma or r["s"]          # sivun tiivistelmä, fallback snippettiin
         tulkinta = tee_tulkinta(r["t"], runko)  # Sitra-näkökulma sisällön pohjalta

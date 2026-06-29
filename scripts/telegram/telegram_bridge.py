@@ -82,15 +82,21 @@ def sessio_id(chat_id):
 YOUTUBE_RE = re.compile(
     r"https?://(?:www\.|m\.)?(?:youtube\.com/(?:watch\?\S*v=|shorts/|live/)|youtu\.be/)[\w\-]+\S*"
 )
-LATAA_SKRIPTI = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "youtube", "download_transcript.sh",
-)
-# Sisältää litteroinnin haun JA suomenkielisen tiivistyksen (Ollama) -> reilumpi raja.
+_SKRIPTIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LATAA_SKRIPTI = os.path.join(_SKRIPTIT, "youtube", "download_transcript.sh")
+# Sisältää litteroinnin haun JA suomenkielisen tiivistyksen (Mistral) -> reilumpi raja.
 LATAUS_AIKAKATKAISU = int(os.environ.get("YOUTUBE_AIKAKATKAISU", "600"))
 # YouTube-litterointi on oletuksena päällä. Voidaan kytkeä pois esim.
 # vaultittomassa kontissa (YOUTUBE_LATAUS=0), jolloin linkkejä ei käsitellä.
 YOUTUBE_LATAUS = os.environ.get("YOUTUBE_LATAUS", "1").strip().lower() not in ("0", "false", "ei", "no")
+
+# Muiden (ei-YouTube) http(s)-linkkien tunnistus. Silta tarkistaa robots.txt:n, hakee
+# sivun, tiivistää sen (Mistral) ja tallentaa Clippings/Verkkosivutiivistelmät/:iin
+# deterministisesti ENNEN kuin viesti menee pi:lle (ks. tallenna_verkkosivu).
+VERKKOSIVU_RE = re.compile(r"https?://[^\s]+")
+VERKKOSIVU_SKRIPTI = os.path.join(_SKRIPTIT, "verkkosivu", "tallenna_verkkosivu.py")
+# Oletuksena päällä; kytke pois VERKKOSIVU_TALLENNUS=0 (esim. vaultittomassa kontissa).
+VERKKOSIVU_TALLENNUS = os.environ.get("VERKKOSIVU_TALLENNUS", "1").strip().lower() not in ("0", "false", "ei", "no")
 # Kun päällä, silta liittää viestin alkuun lähettäjän nimen/käyttäjätunnuksen/id:n,
 # jotta pi tietää KENEN kanssa puhuu (monikäyttäjäidentiteetit, esim. Närhisulka).
 # Oletuksena pois -> yhden käyttäjän identiteetit (esim. mactonus) ennallaan.
@@ -126,48 +132,63 @@ def naytä_kirjoittaa(chat_id):
         pass
 
 
-def lataa_transkriptio(url):
-    # Ajaa download_transcript.sh:n annetulla linkillä ja palauttaa luodun
-    # transkriptiotiedoston polun, tai None jos lataus epäonnistui. Skripti
-    # tulostaa onnistuessaan rivin "Saved to: <polku>".
+def aja_url_skripti(komento, url, aikakatkaisu, nimi):
+    # Ajaa lataus-/tallennusskriptin annetulla linkillä ja palauttaa luodun tiedoston
+    # polun, tai None jos epäonnistui. Skriptit tulostavat onnistuessaan "Saved to: <polku>".
     try:
         tulos = subprocess.run(
-            ["bash", LATAA_SKRIPTI, url],
+            komento + [url],
             cwd=PI_TYOHAKEMISTO,
-            capture_output=True, text=True, timeout=LATAUS_AIKAKATKAISU,
+            capture_output=True, text=True, timeout=aikakatkaisu,
         )
     except subprocess.TimeoutExpired:
-        loki(f"Transkription lataus aikakatkaistiin: {url}")
+        loki(f"{nimi} aikakatkaistiin: {url}")
         return None
     except FileNotFoundError:
-        loki("Virhe: bash tai download_transcript.sh ei löydy.")
+        loki(f"Virhe: {nimi} -skriptiä ei löydy.")
         return None
     for rivi in (tulos.stdout or "").splitlines():
         if rivi.startswith("Saved to:"):
             return rivi.split("Saved to:", 1)[1].strip()
-    loki(f"Transkriptiota ei saatu ({url}): {(tulos.stdout or tulos.stderr or '').strip()[:200]}")
+    loki(f"{nimi} ei tuottanut tiedostoa ({url}): {(tulos.stdout or tulos.stderr or '').strip()[:200]}")
     return None
 
 
 def esikasittele(teksti):
-    # Jos viestissä on YouTube-linkki, ladataan sen transkriptio deterministisesti
-    # ja kerrotaan pi:lle tiedostopolku (ei sisältöä -> ei konteksti- ikkunan
-    # räjäytystä). Palauttaa pi:lle annettavan tekstin.
-    if not YOUTUBE_LATAUS:
-        return teksti
-    osuma = YOUTUBE_RE.search(teksti)
-    if not osuma:
-        return teksti
-    url = osuma.group(0)
-    loki(f"YouTube-linkki havaittu, ladataan transkriptio: {url}")
-    polku = lataa_transkriptio(url)
-    if polku:
-        ohje = (f"[Järjestelmä: viestin YouTube-video on jo litteroitu tiedostoon "
-                f"{polku}. Lue se read-työkalulla, jos vastaus sitä edellyttää.]")
-    else:
-        ohje = ("[Järjestelmä: viestin YouTube-linkin litterointi epäonnistui — "
-                "transkriptiota ei ole saatavilla.]")
-    return f"{ohje}\n\n{teksti}"
+    # Jos viestissä on linkki, käsitellään se deterministisesti (YouTube -> litterointi,
+    # muu http(s) -> verkkosivutiivistelmä) ja kerrotaan pi:lle tiedostopolku (ei sisältöä
+    # -> ei kontek-ikkunan räjäytystä). Palauttaa pi:lle annettavan tekstin.
+    if YOUTUBE_LATAUS:
+        osuma = YOUTUBE_RE.search(teksti)
+        if osuma:
+            url = osuma.group(0)
+            loki(f"YouTube-linkki havaittu, ladataan transkriptio: {url}")
+            polku = aja_url_skripti(["bash", LATAA_SKRIPTI], url, LATAUS_AIKAKATKAISU,
+                                    "YouTube-litterointi")
+            if polku:
+                ohje = (f"[Järjestelmä: viestin YouTube-video on jo litteroitu tiedostoon "
+                        f"{polku}. Lue se read-työkalulla, jos vastaus sitä edellyttää.]")
+            else:
+                ohje = ("[Järjestelmä: viestin YouTube-linkin litterointi epäonnistui — "
+                        "transkriptiota ei ole saatavilla.]")
+            return f"{ohje}\n\n{teksti}"
+
+    if VERKKOSIVU_TALLENNUS:
+        osuma = VERKKOSIVU_RE.search(teksti)
+        if osuma:
+            url = osuma.group(0)
+            loki(f"Verkkosivulinkki havaittu, tallennetaan tiivistelmä: {url}")
+            polku = aja_url_skripti(["python3", VERKKOSIVU_SKRIPTI], url, LATAUS_AIKAKATKAISU,
+                                    "Verkkosivutiivistelmä")
+            if polku:
+                ohje = (f"[Järjestelmä: viestin verkkosivu on jo haettu ja tiivistetty tiedostoon "
+                        f"{polku}. Lue se read-työkalulla, jos vastaus sitä edellyttää.]")
+            else:
+                ohje = ("[Järjestelmä: viestin verkkosivun tallennus epäonnistui "
+                        "(robots.txt esti, haku ei onnistunut tai sisältöä ei ollut).]")
+            return f"{ohje}\n\n{teksti}"
+
+    return teksti
 
 
 def muotoile_tyokalu(toolName, args):

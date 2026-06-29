@@ -4,8 +4,18 @@ URL="${1:-}"
 
 [ -z "$URL" ] && { echo "Usage: $0 <youtube-url>"; return 1 2>/dev/null || false; }
 
-TITLE=$(yt-dlp --get-title "$URL" 2>/dev/null | tr -d '\n' | sed 's/[^a-zA-Z0-9 _.,-]/_/g')
+# Hae otsikko ja julkaisupäivä yhdellä kutsulla (kaksi --print-riviä: otsikko, sitten pvm).
+META=$(yt-dlp --skip-download --print "%(title)s" --print "%(upload_date)s" "$URL" 2>/dev/null)
+TITLE=$(printf '%s\n' "$META" | sed -n '1p' | tr -d '\n' | sed 's/[^a-zA-Z0-9 _.,-]/_/g')
 [ -z "$TITLE" ] && { echo "Failed to get video title"; return 1 2>/dev/null || false; }
+
+# upload_date on muotoa YYYYMMDD (tai NA). Julkaisupäivä jos saatavilla, muuten tallennuspäivä.
+UPLOAD=$(printf '%s\n' "$META" | sed -n '2p')
+if printf '%s' "$UPLOAD" | grep -qE '^[0-9]{8}$'; then
+    PVM_RIVI="Julkaistu: ${UPLOAD:0:4}-${UPLOAD:4:2}-${UPLOAD:6:2}"
+else
+    PVM_RIVI="Tallennettu: $(date +%F)"
+fi
 
 mkdir -p "/vault/Clippings/YouTube"
 
@@ -44,6 +54,7 @@ fi
     echo "# $TITLE"
     echo ""
     echo "Lähde: $URL"
+    echo "$PVM_RIVI"
     echo ""
     echo "---"
     echo ""
