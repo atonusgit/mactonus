@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # tiivista_youtube.py — tuottaa suomenkielisen tiivistelmän YouTube-litteroinnista
-# (Ollama) ja kirjoittaa tiedoston uusiksi muotoon: otsikko + lähde + tiivistelmä +
-# litterointi samaan .md-tiedostoon.
+# (Mistral-pilvimalli — litterointi on julkista dataa, ja pilvi on selvästi nopeampi
+# kuin iso paikallinen malli) ja kirjoittaa tiedoston uusiksi muotoon: otsikko + lähde +
+# tiivistelmä + litterointi samaan .md-tiedostoon.
 #
 # Kutsutaan download_transcript.sh:n lopussa annetulla litterointitiedostolla.
-# Atominen kirjoitus: jos Ollama epäonnistuu, alkuperäinen litterointi jää ennalleen.
+# Atominen kirjoitus: jos Mistral epäonnistuu, alkuperäinen litterointi jää ennalleen.
 #
 # Käyttö: tiivista_youtube.py /vault/Clippings/YouTube/<otsikko>.md
 
@@ -12,18 +13,23 @@ import json, os, sys, urllib.request
 
 # config.py on scripts-juuressa
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import MALLI_TEKSTIT, OLLAMA_URL, OLLAMA_AIKAKATKAISU
+from config import MISTRAL_MALLI, MISTRAL_URL, MISTRAL_API_KEY, MISTRAL_AIKAKATKAISU
 
 # Litteroinnista syötetään enintään näin monta merkkiä Ollamalle (kontekstiraja).
 MAKS_LITTEROINTI = 16000
 
 
-def kutsu_ollama(kehote):
-    data = json.dumps({"model": MALLI_TEKSTIT, "prompt": kehote, "stream": False}).encode("utf-8")
-    pyynto = urllib.request.Request(OLLAMA_URL, data=data,
-                                    headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(pyynto, timeout=OLLAMA_AIKAKATKAISU) as vastaus:
-        return (json.load(vastaus).get("response") or "").strip()
+def kutsu_mistral(kehote):
+    if not MISTRAL_API_KEY:
+        sys.exit("MISTRAL_API_KEY puuttuu .env:stä.")
+    data = json.dumps({"model": MISTRAL_MALLI,
+                       "messages": [{"role": "user", "content": kehote}]}).encode("utf-8")
+    pyynto = urllib.request.Request(MISTRAL_URL, data=data,
+                                    headers={"Content-Type": "application/json",
+                                             "Authorization": f"Bearer {MISTRAL_API_KEY}"})
+    with urllib.request.urlopen(pyynto, timeout=MISTRAL_AIKAKATKAISU) as vastaus:
+        viesti = json.load(vastaus)["choices"][0]["message"]["content"]
+        return (viesti or "").strip()
 
 
 def jasenna(teksti):
@@ -59,7 +65,7 @@ def main():
         "Älä keksi mitään, mitä litteroinnissa ei ole.\n\n"
         f"=== LITTEROINTI{' (katkaistu)' if katkaistu else ''} ===\n{syote}\n\n=== TIIVISTELMÄ ==="
     )
-    tiivistelma = kutsu_ollama(kehote)
+    tiivistelma = kutsu_mistral(kehote)
     if not tiivistelma:
         sys.exit("Ollama ei palauttanut tiivistelmää.")
 

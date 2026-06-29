@@ -15,6 +15,12 @@ MALLI_KUVAT = os.environ.get("MALLI_KUVAT", "gemma4:e4b")              # encode_
 MALLI_TEKSTIT = os.environ.get("MALLI_TEKSTIT", "gemma4:31b")          # cleanup_*, rename_file.py
 MALLI_KOMMENTOIJA = os.environ.get("MALLI_KOMMENTOIJA", "gemma4:31b")  # commenter.py
 
+# === Mistral (LLM-pilvipalvelu, käytetään YouTube-tiivistykseen) ===
+MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
+MISTRAL_AIKAKATKAISU = 120
+MISTRAL_MALLI = os.environ.get("MISTRAL_MALLI", "mistral-small-latest")  # tiivista_youtube.py
+MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY", "")
+
 # === Whisper (whisper.cpp-palvelin hostilla, käytetään vain hostilta) ===
 WHISPER_HOST = "127.0.0.1"
 WHISPER_PORTTI = 8178
