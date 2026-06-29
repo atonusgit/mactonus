@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # tiivista_youtube.py — tuottaa suomenkielisen tiivistelmän YouTube-litteroinnista
-# (Mistral-pilvimalli — litterointi on julkista dataa, ja pilvi on selvästi nopeampi
-# kuin iso paikallinen malli) ja kirjoittaa tiedoston uusiksi muotoon: otsikko + lähde +
-# tiivistelmä + litterointi samaan .md-tiedostoon.
+# (Mistral-pilvimalli — litterointi on julkista dataa, ja pilvi on selvästi nopeampi kuin
+# iso paikallinen malli) ja kirjoittaa tiedoston lopulliseen muotoon: frontmatter + tiivistelmä.
+# Litterointia itseään ei säilytetä.
 #
-# Kutsutaan download_transcript.sh:n lopussa annetulla litterointitiedostolla.
-# Atominen kirjoitus: jos Mistral epäonnistuu, alkuperäinen litterointi jää ennalleen.
+# Kutsutaan download_transcript.sh:n lopussa sen luomalla välitiedostolla, jonka muoto on:
+#   "# <otsikko>\nLähde: <url>\nPäiväys: <pvm>\nJulkaisija: <kanava>\n\n---\n\n<litterointi>"
+# Atominen kirjoitus: jos Mistral epäonnistuu, välitiedosto (litterointi) jää ennalleen.
 #
 # Käyttö: tiivista_youtube.py /vault/Clippings/YouTube/<otsikko>.md
 
@@ -13,19 +14,24 @@ import os, sys
 
 # mistral_apu.py ja config.py ovat scripts-juuressa
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from mistral_apu import kutsu_mistral
-
-# Litteroinnista syötetään enintään näin monta merkkiä mallille (kontekstiraja).
-MAKS_LITTEROINTI = 16000
+from mistral_apu import kutsu_mistral, muotoile_tiivistelma, tiivistys_kehote
 
 
 def jasenna(teksti):
-    # download_transcript.sh:n muoto: "<header>\n\n---\n\n<litterointi>", missä header on
-    # "# <otsikko>\n\nLähde: <url>\n<pvm-rivi>". Header säilytetään sellaisenaan (mm. pvm).
-    if "\n---\n" in teksti:
-        header, litterointi = teksti.split("\n---\n", 1)
-        return header.strip(), litterointi.strip()
-    return "", teksti.strip()
+    # Palauttaa (meta, litterointi). meta poimitaan header-lohkosta (ennen "---").
+    header, litterointi = teksti.split("\n---\n", 1) if "\n---\n" in teksti else ("", teksti)
+    meta = {"otsikko": "", "lahde": "", "paivays": "", "julkaisija": ""}
+    for r in header.splitlines():
+        r = r.strip()
+        if r.startswith("# "):
+            meta["otsikko"] = r[2:].strip()
+        elif r.startswith("Lähde:"):
+            meta["lahde"] = r.split(":", 1)[1].strip()
+        elif r.startswith("Päiväys:"):
+            meta["paivays"] = r.split(":", 1)[1].strip()
+        elif r.startswith("Julkaisija:"):
+            meta["julkaisija"] = r.split(":", 1)[1].strip()
+    return meta, litterointi.strip()
 
 
 def main():
@@ -34,19 +40,11 @@ def main():
     polku = sys.argv[1]
     with open(polku, encoding="utf-8") as f:
         teksti = f.read()
-    header, litterointi = jasenna(teksti)
+    meta, litterointi = jasenna(teksti)
     if not litterointi.strip():
         sys.exit("Ei litterointia tiivistettäväksi.")
 
-    syote = litterointi[:MAKS_LITTEROINTI]
-    katkaistu = len(litterointi) > MAKS_LITTEROINTI
-    kehote = (
-        "Tee suomenkielinen tiivistelmä tästä YouTube-videon litteroinnista. "
-        "Aloita 2–3 lauseen yhteenvedolla, sitten tärkeimmät kohdat lyhyinä ranskalaisina "
-        "viivoina. Litterointi voi olla englanniksi — tiivistä silti suomeksi. "
-        "Älä keksi mitään, mitä litteroinnissa ei ole.\n\n"
-        f"=== LITTEROINTI{' (katkaistu)' if katkaistu else ''} ===\n{syote}\n\n=== TIIVISTELMÄ ==="
-    )
+    kehote = tiivistys_kehote(litterointi, "tämän YouTube-videon litteroinnista")
     try:
         tiivistelma = kutsu_mistral(kehote)
     except Exception as e:
@@ -54,11 +52,8 @@ def main():
     if not tiivistelma:
         sys.exit("Mistral ei palauttanut tiivistelmää.")
 
-    osat = [header or "# YouTube-video", "",
-            "## Tiivistelmä", "", tiivistelma, "",
-            "## Litterointi", "", litterointi, ""]
-    uusi = "\n".join(osat)
-
+    uusi = muotoile_tiivistelma(meta["otsikko"] or "YouTube-video", meta["lahde"],
+                                meta["paivays"], meta["julkaisija"] or "YouTube", tiivistelma)
     tmp = f"{polku}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(uusi)

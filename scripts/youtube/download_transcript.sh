@@ -4,18 +4,22 @@ URL="${1:-}"
 
 [ -z "$URL" ] && { echo "Usage: $0 <youtube-url>"; return 1 2>/dev/null || false; }
 
-# Hae otsikko ja julkaisupäivä yhdellä kutsulla (kaksi --print-riviä: otsikko, sitten pvm).
-META=$(yt-dlp --skip-download --print "%(title)s" --print "%(upload_date)s" "$URL" 2>/dev/null)
+# Hae otsikko, julkaisupäivä ja kanava yhdellä kutsulla (kolme --print-riviä).
+META=$(yt-dlp --skip-download --print "%(title)s" --print "%(upload_date)s" --print "%(uploader)s" "$URL" 2>/dev/null)
 TITLE=$(printf '%s\n' "$META" | sed -n '1p' | tr -d '\n' | sed 's/[^a-zA-Z0-9 _.,-]/_/g')
 [ -z "$TITLE" ] && { echo "Failed to get video title"; return 1 2>/dev/null || false; }
 
 # upload_date on muotoa YYYYMMDD (tai NA). Julkaisupäivä jos saatavilla, muuten tallennuspäivä.
 UPLOAD=$(printf '%s\n' "$META" | sed -n '2p')
 if printf '%s' "$UPLOAD" | grep -qE '^[0-9]{8}$'; then
-    PVM_RIVI="Julkaistu: ${UPLOAD:0:4}-${UPLOAD:4:2}-${UPLOAD:6:2}"
+    PVM="${UPLOAD:0:4}-${UPLOAD:4:2}-${UPLOAD:6:2}"
 else
-    PVM_RIVI="Tallennettu: $(date +%F)"
+    PVM="$(date +%F)"
 fi
+
+# Kanava julkaisijaksi; fallback "YouTube" jos puuttuu.
+UPLOADER=$(printf '%s\n' "$META" | sed -n '3p')
+case "$UPLOADER" in ""|NA) UPLOADER="YouTube";; esac
 
 mkdir -p "/vault/Clippings/YouTube"
 
@@ -49,12 +53,14 @@ if [ -z "$TEMP_SUB" ] || [ ! -s "$TEMP_SUB" ]; then
     return 1 2>/dev/null || false
 fi
 
-# Strip SRT/VTT timestamps and sequence numbers, keep only text lines
+# Välitiedosto tiivistäjälle: metadata-header + "---" + litteroitu teksti (SRT/VTT-
+# aikaleimat ja sekvenssinumerot riisuttu). tiivista_youtube.py kirjoittaa tästä lopullisen
+# muodon (frontmatter + tiivistelmä) eikä säilytä litterointia.
 {
     echo "# $TITLE"
-    echo ""
     echo "Lähde: $URL"
-    echo "$PVM_RIVI"
+    echo "Päiväys: $PVM"
+    echo "Julkaisija: $UPLOADER"
     echo ""
     echo "---"
     echo ""
@@ -67,9 +73,8 @@ fi
 
 rm -rf "$TEMP_DIR"
 
-# Tiivistä litterointi suomeksi (Ollama) ja kirjoita tiivistelmä + litterointi samaan
-# tiedostoon. Best-effort: litterointi on jo tallessa, joten jos Ollama ei vastaa,
-# tiedosto jää litteroinniksi sellaisenaan.
-python3 "$(dirname "$0")/tiivista_youtube.py" "$FINAL_MD" || echo "Tiivistys ohitettiin (Ollama ei vastannut)."
+# Tiivistä litterointi suomeksi (Mistral) ja kirjoita lopullinen muoto. Best-effort: jos
+# Mistral ei vastaa, välitiedosto (litterointi) jää talteen sellaisenaan uusintaa varten.
+python3 "$(dirname "$0")/tiivista_youtube.py" "$FINAL_MD" || echo "Tiivistys ohitettiin (Mistral ei vastannut)."
 
 echo "Saved to: $FINAL_MD"

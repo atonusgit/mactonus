@@ -62,6 +62,16 @@ def etsi_otsikko(html):
     return re.sub(r"\s+", " ", unescape(m.group(1))).strip() if m else ""
 
 
+def etsi_julkaisija(html, url):
+    # Julkaisija og:site_name-metasta; fallback verkkotunnukseen (www. pois).
+    m = re.search(r'<meta[^>]+property=["\']og:site_name["\'][^>]+content=["\']([^"\']+)["\']', html, re.I)
+    if not m:
+        m = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:site_name["\']', html, re.I)
+    if m:
+        return unescape(m.group(1)).strip()
+    return re.sub(r"^www\.", "", urlparse(url).netloc)
+
+
 def etsi_julkaisupvm(html):
     # Kaivaa artikkelin julkaisupäivän (JSON-LD datePublished, meta-tagit, <time datetime>).
     # Palauttaa ISO-muodon "YYYY-MM-DD", tai None jos ei löydy.
@@ -95,6 +105,9 @@ def _itsetesti():
     assert "\n" in teksti, "kappalerakenne pitäisi säilyä"
     assert etsi_julkaisupvm(html) == "2026-06-29", repr(etsi_julkaisupvm(html))
     assert etsi_julkaisupvm("<html></html>") is None
+    htmlj = '<meta property="og:site_name" content="Yle">'
+    assert etsi_julkaisija(htmlj, "https://yle.fi/x") == "Yle"
+    assert etsi_julkaisija("", "https://www.example.com/a") == "example.com"
     print("verkko_apu itsetesti OK")
 
 
