@@ -18,6 +18,9 @@ peri_kontin_ymparisto()
 from config import MALLI_TEKSTIT, OLLAMA_URL, OLLAMA_AIKAKATKAISU  # jaetusta configista
 # Verkkokaavinta jaetaan verkkosivutallennuksen kanssa (scripts/verkko_apu.py).
 from verkko_apu import sivu_sallittu, hae_html, html_tekstiksi, etsi_julkaisupvm
+# Haetun sivun tiivistys tehdään Mistralilla (sama moottori kuin YouTube/verkkosivu;
+# julkista sisältöä, ja pilvi on nopeampi). Uutisvalinta ja Sitra-tulkinta jäävät Ollamalle.
+from mistral_apu import kutsu_mistral
 
 KEY = os.environ.get("STAAN_API_KEY", "")
 LIMIT = 5         # tuloksia per hakutermi, ja mallille tarjottava ehdokasmäärä
@@ -135,20 +138,17 @@ def etsi_pvm(html):
 
 
 def tiivista_sisalto(teksti):
-    # Suomenkielinen tiivistelmä haetusta sivun sisällöstä. Palauttaa None jos
-    # epäonnistuu — tiivistelmä on lisäarvo eikä saa kaataa koko ajoa.
+    # Lyhyt suomenkielinen tiivistelmä haetusta sivun sisällöstä (Mistral). Tämä menee
+    # Telegram-viestin runkoon ja tulkinnan syötteeksi, joten pidetään tiiviinä ja
+    # markdownittomana (vrt. YouTube/verkkosivu, joissa tehdään rikkaampi dokumentti).
+    # Palauttaa None jos epäonnistuu — tiivistelmä on lisäarvo eikä saa kaataa koko ajoa.
     prompt = (
         "Tiivistä seuraavan verkkosivun/uutisartikkelin sisältö SUOMEKSI 3-5 "
         "virkkeellä. Keskity olennaiseen asiasisältöön; ohita navigaatio, mainokset "
         "ja muu epäolennainen. Älä käytä markdown-muotoilua.\n\n"
         "SISÄLTÖ:\n" + teksti)
-    payload = json.dumps({
-        "model": MALLI_TEKSTIT, "prompt": prompt, "stream": False, "think": False,
-    }).encode("utf-8")
-    req = Request(OLLAMA_URL, data=payload, headers={"Content-Type": "application/json"})
     try:
-        with urlopen(req, timeout=OLLAMA_AIKAKATKAISU) as resp:
-            vastaus = json.load(resp).get("response", "").strip()
+        vastaus = kutsu_mistral(prompt)
     except Exception as e:
         loki(f"Sisällön tiivistys epäonnistui: {e}")
         return None
