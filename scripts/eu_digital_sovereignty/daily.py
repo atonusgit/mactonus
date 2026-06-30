@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # EU Digital Sovereignty Daily - hae Staanista, tiivistä Ollamalla, lähetä Telegramiin.
-import hashlib, json, os, re, subprocess, sys
+import hashlib, json, os, subprocess, sys
 from datetime import date
 from urllib.request import Request, urlopen
 from urllib.parse import quote
@@ -18,6 +18,7 @@ peri_kontin_ymparisto()
 from config import MALLI_TEKSTIT, OLLAMA_URL, OLLAMA_AIKAKATKAISU  # jaetusta configista
 # Verkkokaavinta jaetaan verkkosivutallennuksen kanssa (scripts/verkko_apu.py).
 from verkko_apu import sivu_sallittu, hae_html, html_tekstiksi, etsi_julkaisupvm
+from tiedosto_apu import siisti_tiedostonimi
 # Haetun sivun tiivistys tehdään Mistralilla (sama moottori kuin YouTube/verkkosivu;
 # julkista sisältöä, ja pilvi on nopeampi). Uutisvalinta ja Sitra-tulkinta jäävät Ollamalle.
 from mistral_apu import kutsu_mistral
@@ -96,8 +97,8 @@ def lue_lahetetyt():
 
 
 def puhdista_nimi(teksti):
-    # Tiedostonimeksi kelpaava versio otsikosta (vrt. download_transcript.sh).
-    return re.sub(r"[^a-zA-Z0-9 _.,-]", "_", teksti).strip()[:120]
+    # Tiedostonimeksi kelpaava versio otsikosta (vrt. tiedosto_apu.py).
+    return siisti_tiedostonimi(teksti)
 
 
 def tallenna_muistiinpano(valinta):

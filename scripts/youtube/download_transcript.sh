@@ -6,7 +6,8 @@ URL="${1:-}"
 
 # Hae otsikko, julkaisupäivä ja kanava yhdellä kutsulla (kolme --print-riviä).
 META=$(yt-dlp --skip-download --print "%(title)s" --print "%(upload_date)s" --print "%(uploader)s" "$URL" 2>/dev/null)
-TITLE=$(printf '%s\n' "$META" | sed -n '1p' | tr -d '\n' | sed 's/[^a-zA-Z0-9 _.,-]/_/g')
+# Korvaa vain tiedostojärjestelmässä kielletyt merkit; ääkköset säilyvät (vrt. tiedosto_apu.py).
+TITLE=$(printf '%s\n' "$META" | sed -n '1p' | tr -d '\n' | sed 's#[<>:"/\\|?*]#_#g')
 [ -z "$TITLE" ] && { echo "Failed to get video title"; return 1 2>/dev/null || false; }
 
 # upload_date on muotoa YYYYMMDD (tai NA). Julkaisupäivä jos saatavilla, muuten tallennuspäivä.

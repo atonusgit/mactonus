@@ -1,12 +1,9 @@
-import base64, json, sys, subprocess, os, unicodedata
+import base64, json, sys, subprocess, os
 from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import MALLI_KUVAT, OLLAMA_URL
-
-def ascii_nimi(nimi):
-    normalized = unicodedata.normalize('NFKD', nimi)
-    return normalized.encode('ascii', 'ignore').decode('ascii')
+from tiedosto_apu import siisti_tiedostonimi
 
 if len(sys.argv) < 2:
     print("Käyttö: python3 encode_image.py <kuvatiedosto> [tulostiedosto.md]")
@@ -69,10 +66,12 @@ try:
     kuvaus = parsed.get("kuvaus", vastaus)
     avainsanat = parsed.get("avainsanat", [])
 except Exception:
-    nimi = ascii_nimi(os.path.splitext(alkup_nimi)[0])
+    nimi = os.path.splitext(alkup_nimi)[0]
     kuvaus = vastaus
     avainsanat = []
 
+# Siisti nimi tiedostonimeksi (säilyttää ääkköset, korvaa kielletyt merkit).
+nimi = siisti_tiedostonimi(nimi, oletus="kuva")
 kuvaus = kuvaus.replace("\\n", "\n").strip()
 
 if isinstance(avainsanat, list):

@@ -10,12 +10,13 @@
 #
 # Käyttö:  tallenna_verkkosivu.py <url>
 
-import os, re, sys
+import os, sys
 from datetime import date
 from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from mistral_apu import kutsu_mistral, muotoile_tiivistelma, tiivistys_kehote
+from tiedosto_apu import siisti_tiedostonimi
 from verkko_apu import (sivu_sallittu, hae_html, html_tekstiksi, etsi_otsikko,
                         etsi_julkaisija, etsi_julkaisupvm)
 
@@ -27,9 +28,7 @@ def loki(viesti):
 
 
 def siisti_nimi(otsikko, url):
-    nimi = otsikko or urlparse(url).netloc or "verkkosivu"
-    nimi = re.sub(r"[^a-zA-Z0-9 _.,-]", "_", nimi).strip()
-    return (nimi or "verkkosivu")[:120]
+    return siisti_tiedostonimi(otsikko or urlparse(url).netloc, oletus="verkkosivu")
 
 
 def tiivista(teksti):
