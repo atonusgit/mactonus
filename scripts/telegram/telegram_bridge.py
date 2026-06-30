@@ -25,6 +25,7 @@
 #                             valitsee models.json:n ainoan mallin)
 
 import html, json, os, re, sys, time, signal, subprocess, threading
+from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from telegram_api import api_kutsu, laheta_viesti, riisu_markdown
@@ -95,6 +96,10 @@ YOUTUBE_LATAUS = os.environ.get("YOUTUBE_LATAUS", "1").strip().lower() not in ("
 # deterministisesti ENNEN kuin viesti menee pi:lle (ks. tallenna_verkkosivu).
 VERKKOSIVU_RE = re.compile(r"https?://[^\s]+")
 VERKKOSIVU_SKRIPTI = os.path.join(_SKRIPTIT, "verkkosivu", "tallenna_verkkosivu.py")
+# PDF-linkit (URL:n polku päättyy .pdf) reititetään suoraan pdf-skriptille — muuten ne
+# menisivät verkkosivu-skraperille, joka kaatuu PDF:ään. tallenna_pdf.py lataa PDF:n ja
+# merkitsee URL:n lähteeksi.
+PDF_SKRIPTI = os.path.join(_SKRIPTIT, "pdf", "tallenna_pdf.py")
 # Oletuksena päällä; kytke pois VERKKOSIVU_TALLENNUS=0 (esim. vaultittomassa kontissa).
 VERKKOSIVU_TALLENNUS = os.environ.get("VERKKOSIVU_TALLENNUS", "1").strip().lower() not in ("0", "false", "ei", "no")
 # Kun päällä, silta liittää viestin alkuun lähettäjän nimen/käyttäjätunnuksen/id:n,
@@ -156,8 +161,8 @@ def aja_url_skripti(komento, url, aikakatkaisu, nimi):
 
 def esikasittele(teksti):
     # Jos viestissä on linkki, käsitellään se deterministisesti (YouTube -> litterointi,
-    # muu http(s) -> verkkosivutiivistelmä) ja kerrotaan pi:lle tiedostopolku (ei sisältöä
-    # -> ei kontek-ikkunan räjäytystä). Palauttaa pi:lle annettavan tekstin.
+    # .pdf-URL -> PDF-tiivistelmä, muu http(s) -> verkkosivutiivistelmä) ja kerrotaan pi:lle
+    # tiedostopolku (ei sisältöä -> ei kontek-ikkunan räjäytystä). Palauttaa pi:lle annettavan tekstin.
     if YOUTUBE_LATAUS:
         osuma = YOUTUBE_RE.search(teksti)
         if osuma:
@@ -177,6 +182,17 @@ def esikasittele(teksti):
         osuma = VERKKOSIVU_RE.search(teksti)
         if osuma:
             url = osuma.group(0)
+            if urlparse(url).path.lower().endswith(".pdf"):
+                loki(f"PDF-linkki havaittu, tallennetaan tiivistelmä: {url}")
+                polku = aja_url_skripti(["python3", PDF_SKRIPTI], url, LATAUS_AIKAKATKAISU,
+                                        "PDF-tiivistelmä")
+                if polku:
+                    ohje = (f"[Järjestelmä: viestin PDF on jo haettu ja tiivistetty tiedostoon "
+                            f"{polku}. Lue se read-työkalulla, jos vastaus sitä edellyttää.]")
+                else:
+                    ohje = ("[Järjestelmä: viestin PDF-linkin tallennus epäonnistui "
+                            "(lataus/tiivistys ei onnistunut, tai PDF oli skannattu).]")
+                return f"{ohje}\n\n{teksti}"
             loki(f"Verkkosivulinkki havaittu, tallennetaan tiivistelmä: {url}")
             polku = aja_url_skripti(["python3", VERKKOSIVU_SKRIPTI], url, LATAUS_AIKAKATKAISU,
                                     "Verkkosivutiivistelmä")
@@ -329,11 +345,15 @@ def main():
                 continue
             chat_id = str(viesti.get("chat", {}).get("id", ""))
             teksti = viesti.get("text", "")
-            if not teksti:
-                continue
             if chat_id not in SALLITUT:
                 loki(f"Estetty chat {chat_id}: {teksti[:50]!r}")
                 laheta_viesti(chat_id, "Ei käyttöoikeutta.", loki=loki)
+                continue
+            if not teksti:
+                # Teksitön viesti = liite (document/photo/voice/…). Liitteitä ei vielä
+                # käsitellä, joten kerrotaan se käyttäjälle hiljaisen ohituksen sijaan.
+                loki(f"Teksitön viesti chatissa {chat_id} (liite?) — ei käsitellä.")
+                laheta_viesti(chat_id, "En lue liitteitä tällä hetkellä — lähetä viestisi tekstinä tai linkkinä.", loki=loki)
                 continue
             if teksti.strip().lower() in NOLLAUS_KOMENNOT:
                 suffiksi = nollaa_sessio(chat_id)
