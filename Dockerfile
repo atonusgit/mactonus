@@ -18,6 +18,9 @@ RUN apt-get update && apt-get install -y \
 # YouTube rikkoo yt-dlp:n usein -> apt-versio vanhenee nopeasti.
 RUN pip install --no-cache-dir yt-dlp
 
+# Pillow: kuvien pienennys ennen vision-LLM-kutsua (enkoodaa_kuva.py / llm_apu.py).
+RUN pip install --no-cache-dir Pillow
+
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV LANGUAGE=en_US:en

@@ -4,8 +4,19 @@ Käyttää OpenAI-yhteensopivaa /v1/chat/completions -rajapintaa, jota llama.cpp
 useimmat muut paikalliset backendit puhuvat. Backendin vaihto on yhden rivin
 muutos config.py:ssä (LLM_URL) — skripteihin ei tarvitse koskea.
 """
-import base64, json, os, urllib.request
-from config import LLM_URL, LLM_AIKAKATKAISU, MALLI_TEKSTIT
+import base64, io, json, urllib.request, urllib.error
+from config import LLM_URL, LLM_AIKAKATKAISU, MALLI_TEKSTIT, KUVA_MAKS_REUNA
+
+
+def _pienenna_kuva(lahde, maks_reuna=KUVA_MAKS_REUNA):
+    """Pienentää kuvan max-reunaan, palauttaa JPEG-base64:n. Säilyttää kuvasuhteen,
+    ei suurenna. PIL tuodaan funktiossa, jotta moduuli toimii ilman sitä (esim. testit)."""
+    from PIL import Image
+    kuva = Image.open(lahde).convert("RGB")
+    kuva.thumbnail((maks_reuna, maks_reuna))  # vain pienentää, säilyttää suhteen
+    puskuri = io.BytesIO()
+    kuva.save(puskuri, format="JPEG", quality=85)
+    return base64.b64encode(puskuri.getvalue()).decode()
 
 
 def _rakenna_runko(kehote, *, kuva_uri=None, systeemi=None,
@@ -39,20 +50,21 @@ def kysy_llm(kehote, *, kuva=None, systeemi=None, malli=None, url=None,
     """
     kuva_uri = None
     if kuva:
-        with open(kuva, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode()
-        # ponytail: mime tiedostopäätteestä; jpg->jpeg, muut sellaisenaan
-        paate = os.path.splitext(kuva)[1].lower().lstrip(".") or "jpeg"
-        mime = "jpeg" if paate in ("jpg", "jpeg") else paate
-        kuva_uri = f"data:image/{mime};base64,{b64}"
+        # Pienennetään aina JPEG:ksi: välttää 413:n ja nopeuttaa visiota.
+        kuva_uri = f"data:image/jpeg;base64,{_pienenna_kuva(kuva)}"
 
     runko = _rakenna_runko(kehote, kuva_uri=kuva_uri, systeemi=systeemi,
                            malli=malli or MALLI_TEKSTIT, json_muoto=json_muoto)
     data = json.dumps(runko).encode("utf-8")
     pyynto = urllib.request.Request(url or LLM_URL, data=data,
                                     headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(pyynto, timeout=aikakatkaisu or LLM_AIKAKATKAISU) as vastaus:
-        data = json.loads(vastaus.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(pyynto, timeout=aikakatkaisu or LLM_AIKAKATKAISU) as vastaus:
+            data = json.loads(vastaus.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        # Nostetaan serverin oma virheviesti esiin (urllib piilottaa sen muuten).
+        runko_virhe = e.read().decode("utf-8", "replace")[:500]
+        raise RuntimeError(f"LLM {e.code}: {runko_virhe}") from e
     return data["choices"][0]["message"]["content"]
 
 
@@ -64,4 +76,13 @@ if __name__ == "__main__":
     assert r["response_format"] == {"type": "json_object"}
     r2 = _rakenna_runko("mitä tässä", kuva_uri="data:image/jpeg;base64,AAAA")
     assert r2["messages"][-1]["content"][1]["image_url"]["url"].startswith("data:image/jpeg")
-    print("OK")
+    try:
+        from PIL import Image
+        puskuri = io.BytesIO()
+        Image.new("RGB", (4000, 2000)).save(puskuri, "PNG")
+        puskuri.seek(0)
+        ulos = Image.open(io.BytesIO(base64.b64decode(_pienenna_kuva(puskuri, maks_reuna=512))))
+        assert max(ulos.size) <= 512, ulos.size  # pienennetty oikein, suhde säilyy
+        print("OK (kuva-resize mukana)")
+    except ImportError:
+        print("OK (PIL ei asennettu — resize-testi ohitettu)")

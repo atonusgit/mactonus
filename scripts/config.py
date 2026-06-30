@@ -14,10 +14,15 @@ LLM_URL = "http://host.docker.internal:8080/v1/chat/completions"
 LLM_AIKAKATKAISU = 300  # iso malli voi viedä useita minuutteja cold-loadissa
 
 # Mallit luetaan .env:stä; defaultit toimivat ilman .env-merkintöjä.
-# llama.cpp:n -m -moodissa mallin nimellä ei ole väliä (yksi malli tarjolla).
-MALLI_KUVAT = os.environ.get("MALLI_KUVAT", "qwen3.6:35b-a3b")              # enkoodaa_kuva.py (kuva->teksti)
-MALLI_TEKSTIT = os.environ.get("MALLI_TEKSTIT", "qwen3.6:35b-a3b")          # siisti_*, nimea_tiedosto.py, paivittain.py
-MALLI_KOMMENTOIJA = os.environ.get("MALLI_KOMMENTOIJA", "qwen3.6:35b-a3b")  # kommentoija.py
+# Router modessa nimen on täsmättävä serverin preset-id:hen tasan; -m -moodissa
+# nimellä ei ole väliä. Pidetään täysi preset-id, niin molemmat toimivat.
+MALLI_KUVAT = os.environ.get("MALLI_KUVAT", "unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Q5_K_M")              # enkoodaa_kuva.py (kuva->teksti)
+MALLI_TEKSTIT = os.environ.get("MALLI_TEKSTIT", "unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Q5_K_M")          # siisti_*, nimea_tiedosto.py, paivittain.py
+MALLI_KOMMENTOIJA = os.environ.get("MALLI_KOMMENTOIJA", "unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Q5_K_M")  # kommentoija.py
+
+# Kuvan max-reuna ennen vision-kutsua: pienennys välttää 413:n ja nopeuttaa
+# (malli skaalaa kuvan kuitenkin). Nosta jos pieni teksti ei erotu OCR:ssä.
+KUVA_MAKS_REUNA = int(os.environ.get("KUVA_MAKS_REUNA", "1536"))
 
 # === Mistral (LLM-pilvipalvelu, käytetään YouTube-tiivistykseen) ===
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
