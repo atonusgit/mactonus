@@ -1,232 +1,85 @@
 # Mactonus
 
-Paikallinen AI-putki Obsidian-vaultille. Automatisoi muistiinpanojen, äänitallenteiden ja kuvien käsittelyn hyödyntäen **paikallisia** malleja — ei pilveä, ei API-avaimia, ei dataa ulos. Lisäksi reaaliaikainen ääniagentti seuraa käynnissä olevaa nauhoitusistuntoa ja kommentoi sitä puheella. Kaikki LLM-, litterointi- ja TTS-inferenssi pyörii hostilla Metal-kiihdytyksellä.
+**Mactonus** on tekoälyagentin paikallinen **kyvykkyyskerros**: keho ja työkalut, jotka pyörivät omalla raudallasi. Agentin äly (pi) on erillinen, **vaihdettava** komponentti — tämä repo on itse kyvyt ja niiden orkestrointi: litterointi, kuva-analyysi, sisällön tiivistäminen, verkkohaku, etäkomennot, kotiautomaatio ja Obsidian-vaultin ylläpito. Osa kyvyistä on agentin skillien kutsuttavissa, osa pyörii itsenäisesti ajastettuna ilman agenttia.
+
+Yksityinen data käsitellään paikallisilla malleilla — ei mene ulos. Julkisen datan tiivistys voi käyttää nopeaa **Mistral-pilvimallia** (valinnainen, vaatii `MISTRAL_API_KEY`:n). Paikallinen LLM-, litterointi- ja TTS-inferenssi pyörii hostilla Metal-kiihdytyksellä.
 
 ## Yleisarkkitehtuuri
 
 ```mermaid
 flowchart TB
-    Mic([Mikrofoni])
-    Spk([Kaiuttimet])
-    Obs([Obsidian])
-    Vault[("Obsidian-vault<br/>Nauhoitukset/  Projektit/<br/>**/Liitteet/<br/>mactonus/Kehotteet/<br/>mactonus/Dokumenttimuoto-kehotteet/")]
-
-    subgraph Host["macOS-host (M4 Pro)"]
-        direction TB
-        subgraph Mallit["Paikalliset palvelimet"]
-            Whisper["whisper.cpp<br/>:8178"]
-            Ollama["Ollama<br/>:11434<br/>gemma4:e4b, gemma4:31b"]
-            Vox["voxcpm2_server<br/>:8179<br/>(paikallinen-puheassistentti/)"]
-        end
-        subgraph HostSkriptit["scripts/litterointi/"]
-            WS["whisper_server.sh"]
-            Rec["record_and_transcribe.sh"]
-            TS["transcribe_session.sh"]
-            TSW["transcribe_single_wav.sh"]
-        end
+    User([Käyttäjä])
+    subgraph Pilvi["Pilvi — vain julkinen data"]
+        Mistral["Mistral API<br/>tiivistys"]
+        Staan["Staan API<br/>verkkohaku"]
     end
-
+    subgraph Host["macOS-host (Metal-GPU)"]
+        Ollama["Ollama :11434"]
+        Whisper["whisper.cpp :8178"]
+        Vox["voxcpm2 :8179"]
+    end
     subgraph Kontti["Docker-kontti: mactonus"]
-        direction TB
-        CronBox["cron<br/>scripts/kuvat/<br/>scripts/siistiminen/<br/>scripts/puhe/"]
+        Cron["cron<br/>itsenäiset työnkulut"]
+        Pi["pi-agentti<br/>(Telegram-silta / CLI)"]
+        Scripts["scripts/ — kyvyt"]
     end
+    Vault[("Obsidian-vault<br/>/vault")]
+    PiRepo[[".pi — agentin äly<br/>skillit · muisti · malli"]]
 
-    Mic -->|sox rec| Rec
-    Rec -->|HTTP wav-pätkä| Whisper
-    Rec -.->|Ctrl+C| TS
-    TS -->|HTTP| Whisper
-    TS -->|rename_file.py| Ollama
-    TSW -->|HTTP| Whisper
-    WS -.käynnistää.-> Whisper
+    User -->|Telegram / CLI| Pi
+    Pi -->|skill → ajaa| Scripts
+    Cron -->|ajastettu| Scripts
+    Pi -.lukee.-> PiRepo
+    Scripts -->|paikallinen LLM / STT / TTS| Ollama & Whisper & Vox
+    Scripts -->|julkisen datan tiivistys| Mistral
+    Scripts -->|verkkohaku| Staan
+    Scripts <-->|luku / kirjoitus| Vault
 
-    CronBox -->|host.docker.internal| Ollama
-    CronBox -->|host.docker.internal| Vox
-    Vox --> Spk
-
-    Vault <-.->|mount /vault| Kontti
-    Vault <-.-> Obs
-
+    classDef pilvi fill:#fde0dc,stroke:#c62828,color:#000
     classDef palvelin fill:#e8f5e9,stroke:#2e7d32,color:#000
-    classDef hostskripti fill:#e3f2fd,stroke:#1976d2,color:#000
     classDef kontti fill:#fff3e0,stroke:#ef6c00,color:#000
     classDef vaultcls fill:#f3e5f5,stroke:#7b1fa2,color:#000
-    classDef laite fill:#fafafa,stroke:#616161,color:#000
-    class Whisper,Ollama,Vox palvelin
-    class WS,Rec,TS,TSW hostskripti
-    class CronBox kontti
+    classDef agent fill:#e3f2fd,stroke:#1976d2,color:#000
+    class Mistral,Staan pilvi
+    class Ollama,Whisper,Vox palvelin
+    class Cron,Pi,Scripts kontti
     class Vault vaultcls
-    class Mic,Spk,Obs laite
+    class PiRepo agent
 ```
 
-**Keskeinen periaate:** Ollama, whisper.cpp ja VoxCPM2 pyörivät **hostilla**, eivät kontissa, koska Docker Desktop ei läpäise Metal-GPU:ta. Kontissa pyörii vain orkestrointi (cron + Python). Konttisisäiset skriptit kutsuvat hostin palveluja `host.docker.internal`-osoitteen kautta.
+**Keskeinen periaate:** Ollama, whisper.cpp ja VoxCPM2 pyörivät **hostilla**, eivät kontissa, koska Docker Desktop ei läpäise Metal-GPU:ta. Kontissa pyörii vain orkestrointi (cron + Python + pi). Konttisisäiset skriptit kutsuvat hostin palveluja `host.docker.internal`-osoitteen kautta.
+
+## Agentti, skillit ja skriptit
+
+Osaa työnkuluista ohjaa **pi-agentti** (pi-coding-agent), joka pyörii kontissa. Telegram-silta (`telegram/telegram_bridge.py`) ajaa pi:tä headless: käyttäjän viestit menevät pi:lle, ja viesteissä olevat linkit käsitellään deterministisesti jo ennen pi:tä (YouTube-litterointi, verkkosivutiivistys). pi:tä voi ajaa myös interaktiivisesti: `docker exec -it mactonus pi`.
+
+Agentti ja koodi on eriytetty **kahteen git-repoon**:
+
+- **`mactonus/` (tämä repo — koodi):** kaikki suoritettava kyky asuu `scripts/`:ssä. Sama skripti palvelee niin cronia kuin agentin skilliäkin. Jaetut moduulit (`config.py`, `mistral_apu.py`, `verkko_apu.py`, `tiedosto_apu.py`) ovat `scripts/`-juuressa.
+- **`.pi/` (erillinen repo — agentti):** agentin skillit, muisti, persoona ja malliasetukset.
+
+**Periaate — "skillit kuvaavat, skriptit tekevät":** skill on ohut `SKILL.md`-osoitin, joka kertoo agentille *milloin* ja *minkä* `scripts/`-skriptin ajaa; suoritettava logiikka asuu aina `scripts/`:ssä. Näin sama kyky toimii agentista riippumatta (cron, käsin tai vaikka toinen agentti).
 
 ## Työnkulut
 
+Kunkin työnkulun **tarkempi toiminta ja kuvaaja** on sen oman kansion READMEssä (linkit alla).
+
 | Työnkulku | Laukaisin | Skripti(t) | Malli | Syöte → Tuloste |
 |---|---|---|---|---|
-| Nauhoitus + litterointi | manuaalinen (host) | `litterointi/record_and_transcribe.sh` + `transcribe_session.sh` | whisper large-v3-turbo | mikki → `.md` Obsidianiin |
-| Yksittäinen wav | manuaalinen (host) | `litterointi/transcribe_single_wav.sh` | whisper large-v3-turbo | `.wav` → `.txt` |
-| Kuva-analyysi | cron 15 min (kontti) | `kuvat/analyze_images.sh` → `encode_image.py` | `MALLI_KUVAT` | kuva `**/Liitteet/`:ssä → `*_teksti.md` + linkit viereisiin md-tiedostoihin |
-| Kuvatekstien jalostus | cron 5 min (kontti) | `kuvat/refine_image_texts.py` | `MALLI_TEKSTIT` | `*_teksti.md` joissa `#siisti-kuvailutulkkaus` → siistitty kuvaus + avainsanat |
-| Obsidian-notejen siistiminen | cron 1 min (kontti) | `siistiminen/cleanup_obsidian_notes.py` | `MALLI_TEKSTIT` | `*[siisti]*`-merkitty `.md` → korvattu sisältö |
-| Transkriptien siistiminen | manuaalinen (kontti) | `siistiminen/cleanup_transcripts.py [prompt]` | `MALLI_TEKSTIT` | `*[siisti]*`-merkitty `Nauhoitukset/*.md` + valittu prompt → `*_<prompt>.md` |
-| Kommentointi | manuaalinen (kontti) | `puhe/commenter.py` + VoxCPM2 | `MALLI_KOMMENTOIJA` | aktiivinen nauhoitusistunto → puhuttu kommentti |
+| [Nauhoitus + litterointi](scripts/litterointi/) | manuaalinen (host) | `litterointi/record_and_transcribe.sh` + `transcribe_session.sh` | whisper large-v3-turbo | mikki → `.md` Obsidianiin |
+| [Yksittäinen wav](scripts/litterointi/) | manuaalinen (host) | `litterointi/transcribe_single_wav.sh` | whisper large-v3-turbo | `.wav` → `.txt` |
+| [Kuva-analyysi](scripts/kuvat/) | cron 15 min (kontti) | `kuvat/analyze_images.sh` → `encode_image.py` | `MALLI_KUVAT` | kuva `**/Liitteet/`:ssä → `*_teksti.md` + linkit viereisiin md-tiedostoihin |
+| [Kuvatekstien jalostus](scripts/kuvat/) | cron 5 min (kontti) | `kuvat/refine_image_texts.py` | `MALLI_TEKSTIT` | `*_teksti.md` joissa `#siisti-kuvailutulkkaus` → siistitty kuvaus + avainsanat |
+| [Obsidian-notejen siistiminen](scripts/siistiminen/) | cron 1 min (kontti) | `siistiminen/cleanup_obsidian_notes.py` | `MALLI_TEKSTIT` | `*[siisti]*`-merkitty `.md` → korvattu sisältö |
+| [Transkriptien siistiminen](scripts/siistiminen/) | manuaalinen (kontti) | `siistiminen/cleanup_transcripts.py [prompt]` | `MALLI_TEKSTIT` | `*[siisti]*`-merkitty `Nauhoitukset/*.md` + valittu prompt → `*_<prompt>.md` |
+| [Kommentointi](scripts/puhe/) | manuaalinen (kontti) | `puhe/commenter.py` + VoxCPM2 | `MALLI_KOMMENTOIJA` | aktiivinen nauhoitusistunto → puhuttu kommentti |
+| [YouTube-tiivistys](scripts/youtube/) | pi / manuaalinen (kontti) | `youtube/download_transcript.sh` → `tiivista_youtube.py` | **Mistral** | YouTube-linkki → litterointi + suomenkielinen tiivistelmä `Clippings/YouTube/` |
+| [Verkkosivu-tiivistys](scripts/verkkosivu/) | pi / manuaalinen (kontti) | `verkkosivu/tallenna_verkkosivu.py` | **Mistral** | URL (robots.txt huomioiden) → tiivistelmä `Clippings/Verkkosivutiivistelmät/` |
+| [PDF-tiivistys](scripts/pdf/) | pi / manuaalinen (kontti) | `pdf/tallenna_pdf.py` (pdftotext) | **Mistral** | PDF (URL tai vault-polku) → tiivistelmä `Clippings/PDF-tiivistelmät/` |
+| [EU digital sovereignty -daily](scripts/eu_digital_sovereignty/) | cron (kontti) | `eu_digital_sovereignty/daily.py` | **Mistral** (tiivistys) + `MALLI_TEKSTIT` (valinta/tulkinta) | Staan-verkkohaku → Telegram-digesti + arkisto `Clippings/Staan/` |
+| [Telegram-silta](scripts/telegram/) | jatkuva (kontti) | `telegram/telegram_bridge.py` | pi-agentti | Telegram-viestit → pi; linkit käsitellään determ. ennen pi:tä |
 
-(Lisäksi `puhe/say.py` on yksinkertainen TTS-asiakas debugointiin, ei oma työnkulku.)
-
-## Kuvailutulkkaus ja jalostus
-
-```mermaid
-sequenceDiagram
-    autonumber
-    box rgb(255, 243, 224) Kontti
-        participant Cron as cron
-        participant AI as kuvat/analyze_images.sh
-        participant Enc as kuvat/encode_image.py
-        participant Ref as kuvat/refine_image_texts.py
-    end
-    box rgb(243, 229, 245) Vault
-        participant V as /vault
-    end
-    box rgb(232, 245, 233) Host-palvelin
-        participant Ol as Ollama
-    end
-
-    Note over Cron,V: Vaihe 1 — kuvailutulkkaus, joka 15 min
-    Cron->>AI: */15 min
-    AI->>V: hae **/Liitteet/*.{png,jpg} ilman _teksti.md
-    loop kuvat (max 20/ajo, flock estää päällekkäiset ajot)
-        AI->>Enc: timeout 120 python3 encode_image.py
-        Enc->>V: lue kuva (base64) + Kehotteet/Analysoi kuva.md
-        Enc->>Ol: POST /api/generate (MALLI_KUVAT)
-        Ol-->>Enc: kuvaus
-        Enc->>V: kirjoita _teksti.md
-        AI->>V: lisää [[linkki]] viereisiin .md-tiedostoihin
-    end
-
-    Note over Cron,V: Vaihe 2 — jalostus, joka 5 min
-    Cron->>Ref: */5 min (flock)
-    Ref->>V: hae *_teksti.md tägillä #siisti-kuvailutulkkaus
-    loop merkityt (max 4/ajo)
-        Ref->>Ol: POST (MALLI_TEKSTIT)
-        Ol-->>Ref: jalostettu kuvaus + avainsanat
-        Ref->>V: korvaa sisältö, poista tägi
-    end
-```
-
-## Tekstien siistiminen: muistiinpanot ja transkriptit
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor U as Käyttäjä
-    box rgb(255, 243, 224) Kontti
-        participant Cron as cron
-        participant CO as siistiminen/cleanup_obsidian_notes.py
-        participant CT as siistiminen/cleanup_transcripts.py
-    end
-    box rgb(243, 229, 245) Vault
-        participant V as /vault
-    end
-    box rgb(232, 245, 233) Host-palvelin
-        participant Ol as Ollama
-    end
-
-    Note over Cron,CO: Cron-pohjainen — muistiinpanot
-    Cron->>CO: * * * * * (joka minuutti)
-    CO->>V: hae /vault/**/*.md (paitsi /vault/mactonus/), *[siisti]*-merkki
-    loop merkityt (max 4/ajo)
-        CO->>Ol: POST (MALLI_TEKSTIT, inline-kehote)
-        Ol-->>CO: siistitty teksti
-        CO->>V: korvaa sisältö, lisää *[Siistitty: pvm]*
-    end
-
-    Note over U,CT: Manuaalinen — transkriptit
-    U->>CT: docker exec ... cleanup_transcripts.py [prompt]
-    CT->>V: lue Dokumenttimuoto-kehotteet/<prompt>.md
-    CT->>V: hae Nauhoitukset/*.md, *[siisti]*-merkki
-    loop merkityt (max 4)
-        CT->>Ol: POST (MALLI_TEKSTIT, prompt + sisältö)
-        Ol-->>CT: jalostettu teksti
-        CT->>V: kirjoita SESSIO_<prompt>.md
-    end
-```
-
-## Nauhoitus: pätkät + litterointi + nimeäminen
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor U as Käyttäjä
-    box rgb(227, 242, 253) Host-skriptit
-        participant R as litterointi/record_and_transcribe.sh
-        participant T as litterointi/transcribe_session.sh
-        participant RF as litterointi/rename_file.py
-    end
-    box rgb(232, 245, 233) Host-palvelimet
-        participant Rec as sox/rec
-        participant W as whisper.cpp :8178
-        participant O as Ollama
-    end
-
-    U->>R: recr
-    R->>W: tarkista (GET /)
-    loop Joka 2 min
-        R->>Rec: rec → ${SESSIO}_NNN.wav
-        Rec-->>R: wav-pätkä
-        R->>W: POST /inference (wav)
-        W-->>R: txt
-    end
-    U->>R: Ctrl+C
-    Note over Rec: rec finalisoi keskeneräisen wavin
-    R->>T: delegoi viimeistely
-    T->>T: sox-combine backup-wav
-    loop Puuttuville .txt:ille
-        T->>W: POST /inference (wav)
-        W-->>T: txt
-    end
-    T->>T: kokoa .md numerojärjestyksessä
-    T->>RF: nimeä .md
-    RF->>O: POST (MALLI_TEKSTIT, "anna lyhyt nimi")
-    O-->>RF: nimi
-    RF-->>T: renamed .md
-    Note over T: istuntokansio poistuu vain onnistumisen jälkeen
-```
-
-## Kommentointi: VoxCPM2-pohjainen ääniagentti
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor U as Käyttäjä
-    box rgb(255, 243, 224) Kontti
-        participant Co as puhe/commenter.py
-    end
-    box rgb(243, 229, 245) Vault
-        participant V as Nauhoitukset/tmp_chunks/SESSIO/
-    end
-    box rgb(232, 245, 233) Host-palvelimet
-        participant Ol as Ollama
-        participant Vx as voxcpm2_server :8179
-    end
-    box rgb(245, 245, 245) Laite
-        participant S as Kaiuttimet
-    end
-
-    U->>Co: comm (docker exec)
-    Co->>V: lue Kehotteet/Kommentoija.md
-    loop poll 3 s välein
-        Co->>V: tarkkaile aktiivisen SESSIO:n uusia _NNN.txt:iä
-        alt uusia ≥ kynnys (1)
-            Co->>Co: siisti raakalitterointi (string-ops)
-            Co->>Ol: POST (MALLI_KOMMENTOIJA, kehote + litterointi)
-            Ol-->>Co: kommentti
-            Co->>Vx: POST {text, ref, play=true}
-            Vx->>S: synthesize + soita
-            Vx-->>Co: ok
-        end
-    end
-```
+(Lisäksi `puhe/say.py` on yksinkertainen TTS-asiakas debugointiin, ei oma työnkulku. Julkisen datan tiivistys käyttää Mistralia; yksityinen vault-data käsitellään paikallisilla `MALLI_*`-malleilla.)
 
 ## Pikakäynnistys
 
@@ -270,7 +123,7 @@ curl -L -o conf/whisper-models/ggml-large-v3-turbo.bin \
 cp .env.example .env
 ```
 
-Aseta vähintään `VAULT_HOST_PATH` (Obsidian-vaultin absoluuttinen polku) ja `MALLI_*`-arvot kohdasta 2. Muut säädöt toimivat oletuksilla.
+Aseta vähintään `VAULT_HOST_PATH` (Obsidian-vaultin absoluuttinen polku) ja `MALLI_*`-arvot kohdasta 2. Muut säädöt toimivat oletuksilla. Julkisen datan tiivistys (YouTube/verkkosivu/PDF/EU-daily) vaatii lisäksi `MISTRAL_API_KEY`:n; valinnaiset `STAAN_API_KEY` (EU-daily) ja `TELEGRAM_BOT_TOKEN` (Telegram-silta) ohjeineen `.env.example`:ssä.
 
 ### 5. Luo kehotetiedostot vaultiin
 
@@ -327,46 +180,34 @@ Vaihtoehto on `brew services start ollama`, mutta se käynnistää Ollaman defau
 
 Kontti tavoittaa hostin palvelimet (Ollama, whisper, VoxCPM2) `host.docker.internal`-osoitteen kautta — ei tarvetta säätää portteja erikseen.
 
-### Nauhoitus
-
-```bash
-# Käynnistä nauhoitus (Ctrl+C lopettaa ja viimeistelee)
-bash scripts/litterointi/record_and_transcribe.sh
-
-# Viimeistele keskeytynyt istunto käsin
-bash scripts/litterointi/transcribe_session.sh 2026-04-23_17-50-47
-
-# Litteroi yksittäinen wav
-bash scripts/litterointi/transcribe_single_wav.sh /polku/tiedostoon.wav
-```
+Nauhoituksen ajokomennot: ks. [`scripts/litterointi/`](scripts/litterointi/).
 
 ## Hakemistorakenne
 
 ```
 mactonus/
-├── Dockerfile                 # kontin image: cron + Python
-├── docker-compose.yml         # mount /vault + extra_hosts host.docker.internal
+├── Dockerfile                 # kontti-image: cron + Python + Node/pi + poppler-utils
+├── docker-compose.yml         # mount /vault + .pi + extra_hosts host.docker.internal
 ├── scripts/
-│   ├── config.py                  # MALLI_*, OLLAMA_URL, WHISPER_*, VOXCPM_* — keskitetty
-│   ├── litterointi/               # HOST: nauhoitus + whisper
-│   │   ├── whisper_server.sh      # käynnistää whisper.cpp -palvelimen
-│   │   ├── record_and_transcribe.sh   # nauhoitus + live-litterointi
-│   │   ├── transcribe_session.sh  # istunnon viimeistely (Ctrl+C:llä tai käsin)
-│   │   ├── transcribe_single_wav.sh   # yksittäinen valmis wav
-│   │   └── rename_file.py         # AI-pohjainen .md:n uudelleennimeäminen
-│   ├── kuvat/                     # KONTTI (cron): vault-kuvien analyysi
-│   │   ├── analyze_images.sh      # cron-wrapper (flock)
-│   │   ├── encode_image.py        # png/jpg → MALLI_KUVAT → _teksti.md
-│   │   └── refine_image_texts.py  # #siisti-kuvailutulkkaus → MALLI_TEKSTIT
-│   ├── siistiminen/               # KONTTI: markdown-siistiminen
-│   │   ├── cleanup_obsidian_notes.py  # *[siisti]*-merkki → MALLI_TEKSTIT (cron 1min)
-│   │   └── cleanup_transcripts.py # transkripti + prompt → siistitty .md (manual)
-│   └── puhe/                      # KONTTI: kommentointi & TTS
-│       ├── commenter.py           # kuuntelee aktiivista istuntoa, kommentoi VoxCPM2:lla
-│       └── say.py                 # HTTP-client → host.docker.internal:8179 (VoxCPM2)
+│   ├── config.py              # MALLI_*, OLLAMA_*, WHISPER_*, VOXCPM_*, MISTRAL_* — keskitetty
+│   ├── mistral_apu.py         # jaettu: Mistral-kutsu + tiivistyskehote + frontmatter-muoto
+│   ├── verkko_apu.py          # jaettu: robots + haku + HTML→teksti + meta
+│   ├── tiedosto_apu.py        # jaettu: tiedostonimien siistiminen (säilyttää ääkköset)
+│   ├── litterointi/           # HOST: nauhoitus + whisper              → README
+│   ├── kuvat/                 # KONTTI cron: kuva-analyysi             → README
+│   ├── siistiminen/           # KONTTI: muistiinpanot + transkriptit   → README
+│   ├── puhe/                  # KONTTI: kommentointi + TTS             → README
+│   ├── youtube/               # tiivistys (Mistral)                    → README
+│   ├── verkkosivu/            # tiivistys (Mistral)                    → README
+│   ├── pdf/                   # tiivistys (Mistral, pdftotext)         → README
+│   ├── eu_digital_sovereignty/ # cron: Staan + Mistral daily           → README
+│   ├── telegram/              # pi-silta                               → README
+│   ├── lamppu/ ssh/ staan/ tilauspalvelu/      # agentin skill-skriptit (kuvattu .pi:n SKILL.md:issä)
+│   └── aihe_seuraaja/ cron/ muisti/ pi_vault_sync/ yhteenveto/  # muut työnkulut
 ├── conf/
 │   ├── cron/                  # cron-tiedostot (bind-mount /etc/cron.d/:hen)
 │   └── whisper-models/        # ggml-*.bin (gitignore)
+├── .pi/                       # erillinen repo: agentin äly (skillit/muisti/malli) — gitignore
 ├── paikallinen-puheassistentti/   # erillinen host-projekti: voxcpm2_server.py + voices/
 └── logs/                      # cron-ajojen tulosteet (host-mount)
 ```
@@ -379,4 +220,4 @@ Skriptit viittaavat **konttisisäisiin** polkuihin (`/vault`, `/root/scripts/<ty
 
 ## Konfiguraatio
 
-Pysyvä infra (URL:t, portit, timeoutit) on `scripts/config.py`:ssä. Usein vaihtuvat arvot (mallit, vault-polku, äänireferenssi) tulevat `.env`-tiedostosta — kopioi `.env.example` → `.env` ja täytä `VAULT_HOST_PATH`. Python-skriptit `from config import ...`; bash-skriptit `eval "$(python3 ../config.py)"`. Älä hajauta arvoja takaisin skripteihin.
+Pysyvä infra (URL:t, portit, timeoutit) on `scripts/config.py`:ssä. Usein vaihtuvat arvot (mallit, vault-polku, äänireferenssi) ja salaisuudet (API-avaimet, tokenit) tulevat `.env`-tiedostosta — kopioi `.env.example` → `.env` ja täytä `VAULT_HOST_PATH`. Python-skriptit `from config import ...`; bash-skriptit `eval "$(python3 ../config.py)"`. Älä hajauta arvoja takaisin skripteihin, äläkä kovakoodaa salaisuuksia (tämä repo on julkinen) — ne tulevat aina `.env`:stä.
