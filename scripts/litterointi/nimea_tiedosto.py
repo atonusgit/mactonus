@@ -1,7 +1,8 @@
 import json, os, sys, urllib.request, urllib.error
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import MALLI_TEKSTIT, OLLAMA_URL, OLLAMA_AIKAKATKAISU
+from config import MALLI_TEKSTIT, LLM_URL, LLM_AIKAKATKAISU
+from llm_apu import kysy_llm
 
 tiedosto = sys.argv[1]
 sessio = sys.argv[2]
@@ -11,34 +12,20 @@ with open(tiedosto, "r") as f:
     teksti = f.read(500)
 
 # Skripti ajetaan hostilla; config:n URL on kontin POV (host.docker.internal).
-host_url = OLLAMA_URL.replace("host.docker.internal", "localhost")
+host_url = LLM_URL.replace("host.docker.internal", "localhost")
 
-payload = json.dumps({
-    "model": MALLI_TEKSTIT,
-    "prompt": f"Anna lyhyt 2-4 sanan kuvaava nimi tälle nauhoitukselle. Käytä väliviivoja. Ei erikoismerkkejä. Vain nimi, ei selityksiä.\n\n{teksti}",
-    "stream": False
-}).encode("utf-8")
-
-req = urllib.request.Request(
-    host_url,
-    data=payload,
-    headers={"Content-Type": "application/json"},
-    method="POST",
-)
+kehote = (f"Anna lyhyt 2-4 sanan kuvaava nimi tälle nauhoitukselle. "
+          f"Käytä väliviivoja. Ei erikoismerkkejä. Vain nimi, ei selityksiä.\n\n{teksti}")
 
 try:
-    with urllib.request.urlopen(req, timeout=OLLAMA_AIKAKATKAISU) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-except (urllib.error.URLError, TimeoutError, OSError) as e:
-    print(f"⚠ Nimeäminen ohitettu (Ollama ei vastannut): {e}", file=sys.stderr)
-    sys.exit(0)
-except json.JSONDecodeError as e:
-    print(f"⚠ Nimeäminen ohitettu (virheellinen JSON Ollamalta): {e}", file=sys.stderr)
+    vastaus = kysy_llm(kehote, malli=MALLI_TEKSTIT, url=host_url,
+                       aikakatkaisu=LLM_AIKAKATKAISU).strip()
+except Exception as e:
+    print(f"⚠ Nimeäminen ohitettu (LLM ei vastannut): {e}", file=sys.stderr)
     sys.exit(0)
 
-vastaus = data.get("response", "").strip()
 if not vastaus:
-    print("⚠ Nimeäminen ohitettu (Ollama palautti tyhjän nimen)", file=sys.stderr)
+    print("⚠ Nimeäminen ohitettu (LLM palautti tyhjän nimen)", file=sys.stderr)
     sys.exit(0)
 
 nimi = vastaus.replace(" ", "-").lower()

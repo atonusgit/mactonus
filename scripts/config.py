@@ -2,18 +2,22 @@
 # Pysyvä infra (URL:t, portit, timeoutit) tässä; usein vaihtuvat (mallit,
 # äänireferenssi) ladataan .env-tiedostosta.
 #
-# Python-skriptit:  from config import OLLAMA_URL, ...
+# Python-skriptit:  from config import LLM_URL, ...
+#                   from llm_apu import kysy_llm   (jaettu LLM-kutsu)
 # Bash-skriptit:    eval "$(python3 "$SKRIPTIT/config.py")"
 import os
 
-# === Ollama (LLM-palvelin hostilla) ===
-OLLAMA_URL = "http://host.docker.internal:11434/api/generate"
-OLLAMA_AIKAKATKAISU = 300  # iso malli (esim. 31B) voi viedä >3 min cold-loadissa
+# === Paikallinen LLM (llama.cpp-palvelin hostilla, OpenAI-yhteensopiva /v1) ===
+# Backendin vaihto = vain tämä URL. Sama formaatti käy muillekin
+# OpenAI-yhteensopiville backendeille.
+LLM_URL = "http://host.docker.internal:8080/v1/chat/completions"
+LLM_AIKAKATKAISU = 300  # iso malli voi viedä useita minuutteja cold-loadissa
 
 # Mallit luetaan .env:stä; defaultit toimivat ilman .env-merkintöjä.
-MALLI_KUVAT = os.environ.get("MALLI_KUVAT", "gemma4:e4b")              # enkoodaa_kuva.py
-MALLI_TEKSTIT = os.environ.get("MALLI_TEKSTIT", "gemma4:31b")          # cleanup_*, nimea_tiedosto.py
-MALLI_KOMMENTOIJA = os.environ.get("MALLI_KOMMENTOIJA", "gemma4:31b")  # kommentoija.py
+# llama.cpp:n -m -moodissa mallin nimellä ei ole väliä (yksi malli tarjolla).
+MALLI_KUVAT = os.environ.get("MALLI_KUVAT", "qwen3.6:35b-a3b")              # enkoodaa_kuva.py (kuva->teksti)
+MALLI_TEKSTIT = os.environ.get("MALLI_TEKSTIT", "qwen3.6:35b-a3b")          # siisti_*, nimea_tiedosto.py, paivittain.py
+MALLI_KOMMENTOIJA = os.environ.get("MALLI_KOMMENTOIJA", "qwen3.6:35b-a3b")  # kommentoija.py
 
 # === Mistral (LLM-pilvipalvelu, käytetään YouTube-tiivistykseen) ===
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
@@ -37,7 +41,7 @@ VOXCPM_REFERENSSI = os.environ.get("VOXCPM_REFERENSSI", "anton.wav")
 # Yhden nauhoituspätkän pituus sekunteina (nauhoita_ja_litteroi.sh).
 NAUHOITUS_PATKA_PITUUS = int(os.environ.get("NAUHOITUS_PATKA_PITUUS", "120"))
 # Kommentoijan kynnys: kuinka monta uutta litteroitua pätkää tarvitaan
-# ennen kuin kommentoija.py kutsuu Ollamaa + VoxCPM2:ta.
+# ennen kuin kommentoija.py kutsuu LLM:ää + VoxCPM2:ta.
 KOMMENTOIJA_KYNNYS = int(os.environ.get("KOMMENTOIJA_KYNNYS", "1"))
 
 

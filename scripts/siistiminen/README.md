@@ -15,7 +15,7 @@ sequenceDiagram
         participant V as /vault
     end
     box rgb(232, 245, 233) Host-palvelin
-        participant Ol as Ollama
+        participant Ol as llama.cpp
     end
 
     Note over Cron,CO: Cron-pohjainen — muistiinpanot

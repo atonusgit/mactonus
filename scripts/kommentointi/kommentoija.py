@@ -2,7 +2,7 @@
 """Kommentoija — kuuntelee viimeisimmän nauhoitusistunnon litterointeja ja kommentoi ääneen.
 
 Aja kontissa `comm`-aliaksella (docker exec). Vaatii:
-  - Ollama hostilla (host.docker.internal:11434) ja MALLI_KOMMENTOIJA ladattuna
+  - llama.cpp-palvelin hostilla (host.docker.internal:8080) ja MALLI_KOMMENTOIJA ladattuna
   - voxcpm2_palvelin.py käynnissä hostilla (host.docker.internal:8179)
   - Vault-kehote tiedostossa /vault/mactonus/Kehotteet/Kommentoija.md
 """
@@ -19,13 +19,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import (  # noqa: E402
     MALLI_KOMMENTOIJA,
-    OLLAMA_URL,
-    OLLAMA_AIKAKATKAISU,
     VOXCPM_URL,
     VOXCPM_AIKAKATKAISU,
     VOXCPM_REFERENSSI,
     KOMMENTOIJA_KYNNYS,
 )
+from llm_apu import kysy_llm  # noqa: E402
 
 VAULT = Path("/vault")
 TMP_KANTA = VAULT / "mactonus" / "Nauhoitukset" / "tmp_chunks"
@@ -41,23 +40,8 @@ SIISTIMIS_OHJE = (
 )
 
 
-def ollama(systeemi: str, prompt: str) -> str:
-    payload = json.dumps(
-        {
-            "model": MALLI_KOMMENTOIJA,
-            "system": systeemi,
-            "prompt": prompt,
-            "stream": False,
-        }
-    ).encode("utf-8")
-    pyynto = urllib.request.Request(
-        OLLAMA_URL,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(pyynto, timeout=OLLAMA_AIKAKATKAISU) as vastaus:
-        data = json.loads(vastaus.read().decode("utf-8"))
-    return data["response"].strip()
+def kutsu_llm(systeemi: str, prompt: str) -> str:
+    return kysy_llm(prompt, systeemi=systeemi, malli=MALLI_KOMMENTOIJA).strip()
 
 
 def viimeisin_aktiivinen_istunto() -> Path | None:
@@ -156,13 +140,13 @@ def main() -> None:
                     t.read_text(encoding="utf-8").strip() for t in uudet
                 )
                 try:
-                    vastaus = ollama(yhdistetty_kehote, raaka)
+                    vastaus = kutsu_llm(yhdistetty_kehote, raaka)
                     print(f"\033[1;36m✎ {vastaus}\033[0m\n")
                     puhu(vastaus)
                     for t in uudet:
                         kasitellyt.add(t.name)
                 except (OSError, KeyError, json.JSONDecodeError) as e:
-                    print(f"\033[1;31m✗ Ollama-virhe: {e}\033[0m", file=sys.stderr)
+                    print(f"\033[1;31m✗ LLM-virhe: {e}\033[0m", file=sys.stderr)
 
             time.sleep(POLL_VALI)
     except KeyboardInterrupt:

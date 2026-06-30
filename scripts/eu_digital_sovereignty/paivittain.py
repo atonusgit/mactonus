@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# EU Digital Sovereignty Daily - hae Staanista, tiivistä Ollamalla, lähetä Telegramiin.
+# EU Digital Sovereignty Daily - hae Staanista, tiivistä LLM:llä, lähetä Telegramiin.
 import hashlib, json, os, subprocess, sys
 from datetime import date
 from urllib.request import Request, urlopen
@@ -15,12 +15,13 @@ sys.path.insert(0, SCRIPTS_DIR)
 # env:stä jo import-hetkellä.
 from telegram_api import peri_kontin_ymparisto, riisu_markdown
 peri_kontin_ymparisto()
-from config import MALLI_TEKSTIT, OLLAMA_URL, OLLAMA_AIKAKATKAISU  # jaetusta configista
+from config import MALLI_TEKSTIT  # jaetusta configista
+from llm_apu import kysy_llm
 # Verkkokaavinta jaetaan verkkosivutallennuksen kanssa (scripts/verkko_apu.py).
 from verkko_apu import sivu_sallittu, hae_html, html_tekstiksi, etsi_julkaisupvm
 from tiedosto_apu import siisti_tiedostonimi
 # Haetun sivun tiivistys tehdään Mistralilla (sama moottori kuin YouTube/verkkosivu;
-# julkista sisältöä, ja pilvi on nopeampi). Uutisvalinta ja Sitra-tulkinta jäävät Ollamalle.
+# julkista sisältöä, ja pilvi on nopeampi). Uutisvalinta ja Sitra-tulkinta jäävät paikalliselle LLM:lle.
 from mistral_apu import kutsu_mistral
 
 KEY = os.environ.get("STAAN_API_KEY", "")
@@ -207,20 +208,12 @@ def valitse_uutiset(tulokset):
         "ja Sitran näkökulmasta.\n\n"
         'Palauta pelkkä JSON: {"valinnat": [{"indeksi": <hakasulkeissa oleva numero>}]}\n\n'
         "UUTISET:\n" + numeroidut)
-    payload = json.dumps({
-        "model": MALLI_TEKSTIT,
-        "prompt": prompt,
-        "stream": False,
-        "think": False,    # päättelymalli: ohitetaan "ajattelu" -> nopea vastaus
-        "format": "json",  # pakota validi JSON -> luotettava jäsennys
-    }).encode("utf-8")
-    req = Request(OLLAMA_URL, data=payload, headers={"Content-Type": "application/json"})
     try:
-        with urlopen(req, timeout=OLLAMA_AIKAKATKAISU) as resp:
-            vastaus = json.load(resp).get("response", "").strip()
+        # json_muoto=True pakottaa validin JSONin -> luotettava jäsennys
+        vastaus = kysy_llm(prompt, malli=MALLI_TEKSTIT, json_muoto=True).strip()
     except Exception as e:
         # Nostetaan poikkeus -> ajo epäonnistuu, välitiedosto säilyy uusintaa varten.
-        loki(f"Ollama epäonnistui: {e}")
+        loki(f"LLM epäonnistui: {e}")
         raise
     try:
         valinnat = json.loads(vastaus).get("valinnat", [])
@@ -245,20 +238,15 @@ def valitse_uutiset(tulokset):
 
 def tee_tulkinta(otsikko, sisalto):
     # Sitra-näkökulma uutisen SISÄLLÖN (tiivistelmä tai snippetti) pohjalta.
-    # Nostaa poikkeuksen Ollama-virheessä (ydinosa viestiä).
+    # Nostaa poikkeuksen LLM-virheessä (ydinosa viestiä).
     prompt = (
         "Olet EU:n digitaalista suvereniteettia ja paikallisia tekoälymalleja "
         "seuraava analyytikko Sitralla. Alla on uutisen tiivistelmä. Kirjoita "
         "SUOMEKSI 2-3 konkreettista virkettä siitä, miten Sitra voi olla avuksi tai "
         "mitä mahdollisuus tarkoittaa Suomelle. Älä käytä markdown-muotoilua.\n\n"
         f"OTSIKKO: {otsikko}\n\nTIIVISTELMÄ:\n{sisalto}")
-    payload = json.dumps({
-        "model": MALLI_TEKSTIT, "prompt": prompt, "stream": False, "think": False,
-    }).encode("utf-8")
-    req = Request(OLLAMA_URL, data=payload, headers={"Content-Type": "application/json"})
     try:
-        with urlopen(req, timeout=OLLAMA_AIKAKATKAISU) as resp:
-            vastaus = json.load(resp).get("response", "").strip()
+        vastaus = kysy_llm(prompt, malli=MALLI_TEKSTIT).strip()
     except Exception as e:
         loki(f"Tulkinnan teko epäonnistui: {e}")
         raise

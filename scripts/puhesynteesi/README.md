@@ -3,7 +3,7 @@
 Host-puolella ajettava puhesynteesipalvelin (text-to-speech), joka syntetisoi suomenkielistä
 puhetta käyttäjän ääni­referenssin mukaisesti. Mactonuksen kommentointi (`scripts/kommentointi/`) on sen
 **asiakas** verkon yli: `host.docker.internal:8179`. Palvelin pyörii hostilla (Metal-GPU), ei
-kontissa — kuten Ollama ja whisper.cpp.
+kontissa — kuten llama.cpp ja whisper.cpp.
 
 (Aiemmin oma repo `paikallinen-puheassistentti`; absorboitu osaksi mactonusta. Vain TTS-palvelin
 tuotiin — entinen LLM-pohjainen "assistentti" jätettiin pois.)

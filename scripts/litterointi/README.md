@@ -1,6 +1,6 @@
 # Litterointi — nauhoitus + whisper (host)
 
-Nauhoitus ja litterointi pyörivät **hostilla** (eivät kontissa): `rec`/`sox` äänen kaappaukseen ja whisper.cpp litterointiin. Skriptit kutsuvat hostin whisper-palvelinta (`:8178`) ja Ollamaa (tiedoston nimeämiseen).
+Nauhoitus ja litterointi pyörivät **hostilla** (eivät kontissa): `rec`/`sox` äänen kaappaukseen ja whisper.cpp litterointiin. Skriptit kutsuvat hostin whisper-palvelinta (`:8178`) ja llama.cpp:tä (tiedoston nimeämiseen).
 
 ```mermaid
 sequenceDiagram
@@ -14,7 +14,7 @@ sequenceDiagram
     box rgb(232, 245, 233) Host-palvelimet
         participant Rec as sox/rec
         participant W as whisper.cpp :8178
-        participant O as Ollama
+        participant O as llama.cpp
     end
 
     U->>R: recr
@@ -60,6 +60,6 @@ bash scripts/litterointi/litteroi_wav.sh /polku/tiedostoon.wav
 - `nauhoita_ja_litteroi.sh` — 2 min wav-pätkät + live-litterointi taustalla
 - `litteroi_istunto.sh` — istunnon viimeistely: backup-wav, puuttuvat litteroinnit, kokoaa `.md`:n, nimeää
 - `litteroi_wav.sh` — yksittäinen valmis wav → `.txt`
-- `nimea_tiedosto.py` — AI-pohjainen `.md`:n uudelleennimeäminen (Ollama)
+- `nimea_tiedosto.py` — AI-pohjainen `.md`:n uudelleennimeäminen (llama.cpp)
 
 Host-binäärit: `/opt/homebrew/bin/{rec,sox}` ja `whisper-server` PATHissa. Skriptien väliset polut ratkaistaan `BASH_SOURCE`:n kautta, joten repo voi olla missä tahansa host-kansiossa.

@@ -8,7 +8,7 @@ sequenceDiagram
     participant Cron as cron
     participant D as daily.py
     participant St as Staan API
-    participant Ol as Ollama
+    participant Ol as llama.cpp
     participant Mi as Mistral
     participant Tg as Telegram
     participant V as Vault (Clippings/Staan)
@@ -28,7 +28,7 @@ sequenceDiagram
 ## Mallien jako
 
 - **Sivun tiivistys → Mistral** (julkista dataa, nopea pilvi).
-- **Uutisten valinta + Sitra-tulkinta → paikallinen Ollama** (`MALLI_TEKSTIT`) — Sitra-spesifistä päättelyä, ei ulkoisteta.
+- **Uutisten valinta + Sitra-tulkinta → paikallinen llama.cpp** (`MALLI_TEKSTIT`) — Sitra-spesifistä päättelyä, ei ulkoisteta.
 - **Kaavinta** jaettu verkkosivu-tiivistyksen kanssa (`verkko_apu.py`).
 
 Vaatii `STAAN_API_KEY`:n ja (tiivistykseen) `MISTRAL_API_KEY`:n. Arkisto toimii dedup-lähteenä: jo lähetettyjä URL:eja ei valita uudestaan.

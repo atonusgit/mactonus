@@ -26,7 +26,6 @@ services:
       - .env
     environment:
       - TZ=Europe/Helsinki
-      - OLLAMA_API_KEY=ollama-local
       - OBSIDIAN_VAULT_PATH=/vault
     extra_hosts:
       - "host.docker.internal:host-gateway"

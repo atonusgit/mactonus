@@ -2,7 +2,8 @@ import base64, json, sys, subprocess, os
 from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import MALLI_KUVAT, OLLAMA_URL
+from config import MALLI_KUVAT
+from llm_apu import kysy_llm
 from tiedosto_apu import siisti_tiedostonimi
 
 if len(sys.argv) < 2:
@@ -34,29 +35,9 @@ else:
 }
 Nimi: max 5 sanaa, väliviiva erottimena, ei erikoismerkkejä eikä välilyöntejä."""
 
-with open(kuva, "rb") as f:
-    img = base64.b64encode(f.read()).decode()
-
-payload = json.dumps({
-    "model": MALLI_KUVAT,
-    "prompt": kehote,
-    "images": [img],
-    "stream": False
-})
-
-with open("/tmp/request.json", "w") as f:
-    f.write(payload)
-
 print(f"Analysoidaan: {kuva}")
-result = subprocess.run(
-    ["curl", "-s", OLLAMA_URL,
-     "-H", "Content-Type: application/json",
-     "-d", "@/tmp/request.json"],
-    capture_output=True, text=True
-)
-
-data = json.loads(result.stdout)
-vastaus = data.get("response", "")
+# ponytail: jos llama.cpp palauttaa 413 (kuva liian iso), pienennä kuva ennen ajoa.
+vastaus = kysy_llm(kehote, kuva=kuva, malli=MALLI_KUVAT)
 
 try:
     alku = vastaus.find("{")

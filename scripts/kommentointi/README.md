@@ -1,6 +1,6 @@
 # Kommentointi — VoxCPM2-pohjainen ääniagentti
 
-Reaaliaikainen ääniagentti: seuraa käynnissä olevaa nauhoitusistuntoa, tuottaa puhutun kommentin (Ollama `MALLI_KOMMENTOIJA`) ja syntetisoi sen ääneksi (VoxCPM2 `:8179`).
+Reaaliaikainen ääniagentti: seuraa käynnissä olevaa nauhoitusistuntoa, tuottaa puhutun kommentin (llama.cpp `MALLI_KOMMENTOIJA`) ja syntetisoi sen ääneksi (VoxCPM2 `:8179`).
 
 ```mermaid
 sequenceDiagram
@@ -13,7 +13,7 @@ sequenceDiagram
         participant V as Nauhoitukset/tmp_chunks/SESSIO/
     end
     box rgb(232, 245, 233) Host-palvelimet
-        participant Ol as Ollama
+        participant Ol as llama.cpp
         participant Vx as voxcpm2_palvelin :8179
     end
     box rgb(245, 245, 245) Laite

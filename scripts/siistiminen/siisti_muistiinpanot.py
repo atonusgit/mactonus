@@ -2,7 +2,8 @@ import subprocess, os, sys, json
 from datetime import datetime, date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import MALLI_TEKSTIT, OLLAMA_URL
+from config import MALLI_TEKSTIT
+from llm_apu import kysy_llm
 
 VAULT = "/vault"
 MAKSIMI = 4
@@ -29,9 +30,7 @@ def poista_siisti_merkinta(sisalto):
     return sisalto.replace("*[siisti]*", "").strip()
 
 def siisti_tiedosto(polku, sisalto):
-    payload = json.dumps({
-        "model": MALLI_TEKSTIT,
-        "prompt": f"""Siisti seuraava muistiinpano. Kirjoita se puhtaaksi ja jäsenneltyyn muotoon suomeksi.
+    kehote = f"""Siisti seuraava muistiinpano. Kirjoita se puhtaaksi ja jäsenneltyyn muotoon suomeksi.
 Säilytä kaikki olennainen tieto. Älä lisää uutta tietoa. Älä muuta rakennetta radikaalisti.
 Pidä ![[Kuvatiedosto.png]] -kohdat muuttumattomina, koska ne ovat kuvareferenssejä.
 Lisää tiedoston loppuun merkintä: *[Päivitetty: {date.today()}]*
@@ -39,22 +38,8 @@ Lisää tiedoston loppuun merkintä: *[Päivitetty: {date.today()}]*
 Muistiinpano:
 {sisalto}
 
-Palauta vain siistitty muistiinpano, ei selityksiä.""",
-        "stream": False
-    })
-
-    with open("/tmp/siisti_request.json", "w") as f:
-        f.write(payload)
-
-    result = subprocess.run(
-        ["curl", "-s", OLLAMA_URL,
-         "-H", "Content-Type: application/json",
-         "-d", "@/tmp/siisti_request.json"],
-        capture_output=True, text=True
-    )
-
-    data = json.loads(result.stdout)
-    return data.get("response", "")
+Palauta vain siistitty muistiinpano, ei selityksiä."""
+    return kysy_llm(kehote, malli=MALLI_TEKSTIT)
 
 def main():
     log("Aloitetaan muistiinpanojen siistiminen")

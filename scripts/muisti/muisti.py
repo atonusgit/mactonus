@@ -3,13 +3,13 @@
 # per-päivä-tallennus, kuukausitiivistys ja rajatun MEMORY.md-näkymän kokoaminen.
 #
 # Alikomennot:
-#   konsolidoi  Lue uudet session-rivit -> poimi pysyvät opit (Ollama) -> tämän päivän tiedosto.
-#   tiivista    Yli 2 kk vanhat kuukaudet -> kuukausitiivistelmä (Ollama) + raakojen arkistointi.
+#   konsolidoi  Lue uudet session-rivit -> poimi pysyvät opit (LLM) -> tämän päivän tiedosto.
+#   tiivista    Yli 2 kk vanhat kuukaudet -> kuukausitiivistelmä (LLM) + raakojen arkistointi.
 #   kokoa       Regeneroi MEMORY.md = kuukausitiivistelmät + jäljellä olevat päivätiedostot.
 #   migroi      Pilko nykyinen MEMORY.md:n päivälohkot päivätiedostoiksi (kertaluontoinen).
 #   aja         konsolidoi -> tiivista -> kokoa (cronin sisääntulopiste).
 #
-# Vain stdlib + config.py (Ollama). LLM-työ suoralla Ollama-kutsulla kuten daily.py.
+# Vain stdlib + config.py + llm_apu. LLM-työ jaetulla kysy_llm-kutsulla kuten daily.py.
 
 import glob, json, os, re, shutil, sys, urllib.request
 from datetime import datetime
@@ -23,7 +23,7 @@ ARKISTO_DIR = os.path.join(MEMORY_DIR, "arkisto")
 MEMORY_MD = os.path.join(PI_AGENT, "MEMORY.md")
 TILA_TIEDOSTO = os.path.join(MEMORY_DIR, ".tila.json")
 
-# Kuinka monta merkkiä uutta keskustelua syötetään kerralla Ollamalle (raja kontekstille).
+# Kuinka monta merkkiä uutta keskustelua syötetään kerralla LLM:lle (raja kontekstille).
 MAKS_SYOTE = 8000
 TIIVISTYS_KK_RAJA = 2  # kuukausi tiivistetään kun se on väh. tämän verran kuukausia vanha
 
@@ -36,20 +36,17 @@ OTSIKKO = """# MEMORY.md — keskustelumuisti (GENEROITU — älä muokkaa käsi
 
 # config.py on scripts-juuressa
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import MALLI_TEKSTIT, OLLAMA_URL, OLLAMA_AIKAKATKAISU
+from config import MALLI_TEKSTIT
+from llm_apu import kysy_llm
 
 
 def nyt():
     return datetime.now()
 
 
-def kutsu_ollama(kehote):
-    # Suora Ollama-generate-kutsu (sama malli kuin cleanup_*). Palauttaa vastaustekstin.
-    data = json.dumps({"model": MALLI_TEKSTIT, "prompt": kehote, "stream": False}).encode("utf-8")
-    pyynto = urllib.request.Request(OLLAMA_URL, data=data,
-                                    headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(pyynto, timeout=OLLAMA_AIKAKATKAISU) as vastaus:
-        return (json.load(vastaus).get("response") or "").strip()
+def kutsu_llm(kehote):
+    # Jaettu LLM-kutsu (MALLI_TEKSTIT). Palauttaa vastaustekstin.
+    return (kysy_llm(kehote, malli=MALLI_TEKSTIT) or "").strip()
 
 
 # ---------- tila ----------
@@ -169,11 +166,11 @@ def konsolidoi():
             f"=== UUSI KESKUSTELU ===\n{syote}\n\n=== POIMITUT UUDET OPIT ==="
         )
         try:
-            vastaus = kutsu_ollama(kehote)
+            vastaus = kutsu_llm(kehote)
         except Exception as e:
-            # Ollama-virhe: ÄLÄ tallenna edenneitä offsetteja, jotta sama sisältö
+            # LLM-virhe: ÄLÄ tallenna edenneitä offsetteja, jotta sama sisältö
             # käsitellään uudelleen seuraavalla ajolla.
-            print(f"konsolidoi: Ollama-virhe, yritetään uudelleen seuraavalla ajolla: {e}", flush=True)
+            print(f"konsolidoi: LLM-virhe, yritetään uudelleen seuraavalla ajolla: {e}", flush=True)
             return
         if vastaus and "EI MITÄÄN" not in vastaus.upper():
             pvm = nyt().strftime("%Y-%m-%d")
@@ -224,9 +221,9 @@ def tiivista():
             + "\n\n".join(osat)
         )
         try:
-            tiiv = kutsu_ollama(kehote)
+            tiiv = kutsu_llm(kehote)
         except Exception as e:
-            print(f"tiivista: Ollama-virhe kuukaudelle {kk}: {e}", flush=True)
+            print(f"tiivista: LLM-virhe kuukaudelle {kk}: {e}", flush=True)
             continue
         if not tiiv:
             continue

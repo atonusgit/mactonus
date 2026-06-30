@@ -2,7 +2,8 @@ import subprocess, os, sys, json, atexit, signal
 from datetime import datetime, date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import MALLI_TEKSTIT, OLLAMA_URL
+from config import MALLI_TEKSTIT
+from llm_apu import kysy_llm
 
 LOCK_FILE = "/tmp/luo_yhteenveto.lock"
 
@@ -98,29 +99,8 @@ Formatoi:
 
 Älä käytä otsikoita, älä selitä, älä lisää teknisiä merkintöjä."""
     
-    payload = json.dumps({
-        "model": MALLI_TEKSTIT,
-        "prompt": prompt,
-        "stream": False
-    })
-    
-    with open("/tmp/yhteenveto_request.json", "w") as f:
-        f.write(payload)
-    
     try:
-        result = subprocess.run(
-            ["curl", "-s", OLLAMA_URL,
-             "-H", "Content-Type: application/json",
-             "-d", "@/tmp/yhteenveto_request.json"],
-            capture_output=True, text=True, timeout=300
-        )
-        
-        if result.returncode != 0:
-            log(f"Virhe Ollama API:ssa: {result.stderr}")
-            return None
-        
-        data = json.loads(result.stdout)
-        return data.get("response", "")
+        return kysy_llm(prompt, malli=MALLI_TEKSTIT)
     except Exception as e:
         log(f"Virhe yhteenvetoa luotaessa: {e}")
         return None

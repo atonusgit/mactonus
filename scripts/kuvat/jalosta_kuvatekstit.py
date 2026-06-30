@@ -9,7 +9,8 @@ import subprocess, os, sys, json, re, fcntl
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import MALLI_TEKSTIT, OLLAMA_URL, OLLAMA_AIKAKATKAISU
+from config import MALLI_TEKSTIT
+from llm_apu import kysy_llm
 
 VAULT = "/vault"
 MAKSIMI = 4
@@ -86,22 +87,7 @@ def parsi(sisalto):
 def jalosta(kuvaus, avainsanat, kehote_pohja):
     kehote = kehote_pohja.replace("{kuvaus}", kuvaus).replace(
         "{avainsanat}", avainsanat if avainsanat else "(ei avainsanoja)")
-    payload = json.dumps({
-        "model": MALLI_TEKSTIT,
-        "prompt": kehote,
-        "think": False,
-        "stream": False
-    })
-    with open("/tmp/jalosta_kuva.json", "w") as f:
-        f.write(payload)
-    result = subprocess.run(
-        ["curl", "-s", "--max-time", str(OLLAMA_AIKAKATKAISU), OLLAMA_URL,
-         "-H", "Content-Type: application/json",
-         "-d", "@/tmp/jalosta_kuva.json"],
-        capture_output=True, text=True
-    )
-    data = json.loads(result.stdout)
-    vastaus = data.get("response", "")
+    vastaus = kysy_llm(kehote, malli=MALLI_TEKSTIT)
     alku = vastaus.find("{")
     loppu = vastaus.rfind("}") + 1
     parsed = json.loads(vastaus[alku:loppu])

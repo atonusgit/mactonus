@@ -14,7 +14,7 @@ flowchart TB
         Staan["Staan API<br/>verkkohaku"]
     end
     subgraph Host["macOS-host (Metal-GPU)"]
-        Ollama["Ollama :11434"]
+        LLM["llama.cpp :8080"]
         Whisper["whisper.cpp :8178"]
         Vox["voxcpm2 :8179"]
     end
@@ -30,7 +30,7 @@ flowchart TB
     Pi -->|skill → ajaa| Scripts
     Cron -->|ajastettu| Scripts
     Pi -.lukee.-> PiRepo
-    Scripts -->|paikallinen LLM / STT / TTS| Ollama & Whisper & Vox
+    Scripts -->|paikallinen LLM / STT / TTS| LLM & Whisper & Vox
     Scripts -->|julkisen datan tiivistys| Mistral
     Scripts -->|verkkohaku| Staan
     Scripts <-->|luku / kirjoitus| Vault
@@ -41,13 +41,13 @@ flowchart TB
     classDef vaultcls fill:#f3e5f5,stroke:#7b1fa2,color:#000
     classDef agent fill:#e3f2fd,stroke:#1976d2,color:#000
     class Mistral,Staan pilvi
-    class Ollama,Whisper,Vox palvelin
+    class LLM,Whisper,Vox palvelin
     class Cron,Pi,Scripts kontti
     class Vault vaultcls
     class PiRepo agent
 ```
 
-**Keskeinen periaate:** Ollama, whisper.cpp ja VoxCPM2 pyörivät **hostilla**, eivät kontissa, koska Docker Desktop ei läpäise Metal-GPU:ta. Kontissa pyörii vain orkestrointi (cron + Python + pi). Konttisisäiset skriptit kutsuvat hostin palveluja `host.docker.internal`-osoitteen kautta.
+**Keskeinen periaate:** llama.cpp, whisper.cpp ja VoxCPM2 pyörivät **hostilla**, eivät kontissa, koska Docker Desktop ei läpäise Metal-GPU:ta. Kontissa pyörii vain orkestrointi (cron + Python + pi). Konttisisäiset skriptit kutsuvat hostin palveluja `host.docker.internal`-osoitteen kautta.
 
 ## Agentti, skillit ja skriptit
 
@@ -85,7 +85,7 @@ Kunkin työnkulun **tarkempi toiminta ja kuvaaja** on sen oman kansion READMEss�
 
 ### Esivaatimukset
 
-- macOS Apple Silicon (Metal-tuki — Ollama ja whisper.cpp käyttävät GPU:ta)
+- macOS Apple Silicon (Metal-tuki — llama.cpp ja whisper.cpp käyttävät GPU:ta)
 - [Homebrew](https://brew.sh) — pakettienhallinta `brew install`-komentoja varten
 - [Docker Desktop](https://docker.com/products/docker-desktop/) — `mactonus`-kontti pyörii sen päällä
 - [Obsidian](https://obsidian.md) + vault-hakemisto johonkin
@@ -95,19 +95,22 @@ Kunkin työnkulun **tarkempi toiminta ja kuvaaja** on sen oman kansion READMEss�
 ```bash
 brew install whisper-cpp   # whisper-server + whisper-cli
 brew install sox           # rec-komento nauhoitukseen
-brew install ollama        # LLM-runtime (vaihtoehto: brew install --cask ollama-app GUI:lla)
+brew install llama.cpp     # LLM-runtime (tarjoaa llama-server / llama serve)
 ```
 
-### 2. Lataa Ollama-mallit
+### 2. Lataa LLM-malli
 
-`ollama pull` vaatii että Ollama-daemoni on käynnissä. Voit aloittaa varsinaisen käynnistyksen jo nyt (ks. kohta 7) ja jättää sen päälle, tai aja tilapäisesti `ollama serve` toisessa terminaalissa pelkän pull-vaiheen ajaksi.
+Yksi multimodaali malli hoitaa sekä tekstin että kuva-analyysin. `-hf` noutaa GGUF:n ja
+vision-projektorin (mmproj) automaattisesti annettuun kansioon — anna latautua ja sammuta (Ctrl-C):
 
 ```bash
-ollama pull gemma4:e4b     # multimodaali, kuva-analyysiin (MALLI_KUVAT)
-ollama pull gemma4:31b     # iso, tekstit + kommentointi (MALLI_TEKSTIT, MALLI_KOMMENTOIJA)
+mkdir -p ~/llama-models
+LLAMA_CACHE=~/llama-models llama serve -hf unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Q5_K_M --port 8080
 ```
 
-`gemma4:31b` on iso (~19 GB) ja vaatii merkittävästi VRAM:ia. Jos muisti loppuu (whisperin ja VoxCPM2:n rinnalla), vaihda esim. `MALLI_KOMMENTOIJA='gemma4:e4b'` `.env`:ssä — kommentointi on reaaliaikaista ja kilpailee VoxCPM2:n kanssa muistista.
+`Q5_K_M` on ~25 GB. Malli on MoE (~3B aktiivista per token) → nopea ajossa; MTP antaa lisänopeutta
+(sisäänrakennettu speculative decoding). 48 GB RAM riittää tähän + whisper + VoxCPM2 yhtä aikaa.
+Pienempää tarvittaessa: vaihda quant `:Q4_K_M` (~20 GB).
 
 ### 3. Lataa whisper-malli
 
@@ -158,8 +161,12 @@ käynnistys on kohdassa 7.
 Neljä terminaalia. A jää auki missä tahansa, B–D ajetaan mactonus-juuressa:
 
 ```bash
-# A. Ollama LLM-runtime — :11434 (jää auki)
-OLLAMA_HOST=0.0.0.0 OLLAMA_KEEP_ALIVE=24h ollama serve
+# A. llama.cpp LLM-runtime — :8080 (jää auki)
+# Single-model-moodi (-m): malli pysyy ladattuna, vision toimii, ei pientä payload-rajaa.
+MODEL=$(find ~/llama-models -iname '*Q5_K_M*.gguf' | head -1)
+MMPROJ=$(find ~/llama-models -iname 'mmproj*.gguf' | head -1)
+llama serve -m "$MODEL" --mmproj "$MMPROJ" \
+    --image-min-tokens 1024 -fa on --host 0.0.0.0 --port 8080
 
 # B. whisper.cpp server — :8178 (jää auki)
 bash scripts/litterointi/whisper_palvelin.sh
@@ -173,13 +180,16 @@ python3 voxcpm2_palvelin.py
 docker compose up -d --build
 ```
 
-Ollaman env-muuttujat:
-- `OLLAMA_HOST=0.0.0.0` — sitoutuu kaikkiin verkkointerface-osoitteisiin niin että `host.docker.internal:11434` toimii kontista varmasti (default `127.0.0.1` voi jäädä kontille tavoittamattomiin riippuen Dockerin verkkotilasta).
-- `OLLAMA_KEEP_ALIVE=24h` — pitää mallit VRAM:ssa 24 h. Default 5 min aiheuttaisi mallien cold-loadia 1–15 min välein (cron-työnkulut), jolloin iso 31B-malli takkuilee.
+llama serve -liput:
+- `--host 0.0.0.0` — sitoutuu kaikkiin verkkointerface-osoitteisiin niin että `host.docker.internal:8080` toimii kontista varmasti (default `127.0.0.1` voi jäädä kontille tavoittamattomiin riippuen Dockerin verkkotilasta).
+- `--mmproj` — vision-projektori; pakollinen kuva-analyysiin.
+- `--image-min-tokens 1024` — riittävä kuvaresoluutio Qwen-VL:lle (muuten malli "arvaa" eikä näe kuvaa kunnolla).
+- `-fa on` — Flash Attention, nopeus + muistinsäästö.
 
-Vaihtoehto on `brew services start ollama`, mutta se käynnistää Ollaman default-asetuksilla — env-muuttujien asettaminen vaatii LaunchAgent-plistin muokkausta.
+Single-model-moodissa malli pysyy ladattuna koko ajon — ei cold-load-kiertoa cron-ajojen välillä,
+toisin kuin malleja idle-aikana purkavilla runtimeilla.
 
-Kontti tavoittaa hostin palvelimet (Ollama, whisper, VoxCPM2) `host.docker.internal`-osoitteen kautta — ei tarvetta säätää portteja erikseen.
+Kontti tavoittaa hostin palvelimet (llama.cpp, whisper, VoxCPM2) `host.docker.internal`-osoitteen kautta — ei tarvetta säätää portteja erikseen.
 
 Nauhoituksen ajokomennot: ks. [`scripts/litterointi/`](scripts/litterointi/).
 
@@ -190,7 +200,8 @@ mactonus/
 ├── Dockerfile                 # kontti-image: cron + Python + Node/pi + poppler-utils
 ├── docker-compose.yml         # mount /vault + .pi + extra_hosts host.docker.internal
 ├── scripts/
-│   ├── config.py              # MALLI_*, OLLAMA_*, WHISPER_*, VOXCPM_*, MISTRAL_* — keskitetty
+│   ├── config.py              # MALLI_*, LLM_*, WHISPER_*, VOXCPM_*, MISTRAL_* — keskitetty
+│   ├── llm_apu.py             # jaettu: LLM-kutsu (OpenAI /v1/chat/completions, teksti + kuva)
 │   ├── mistral_apu.py         # jaettu: Mistral-kutsu + tiivistyskehote + frontmatter-muoto
 │   ├── verkko_apu.py          # jaettu: robots + haku + HTML→teksti + meta
 │   ├── tiedosto_apu.py        # jaettu: tiedostonimien siistiminen (säilyttää ääkköset)

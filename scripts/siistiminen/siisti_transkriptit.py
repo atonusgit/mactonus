@@ -2,7 +2,8 @@ import subprocess, os, sys, json
 from datetime import datetime, date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import MALLI_TEKSTIT, OLLAMA_URL
+from config import MALLI_TEKSTIT
+from llm_apu import kysy_llm
 
 KANSIO = "/vault/mactonus/Nauhoitukset"
 MAKSIMI = 4
@@ -72,25 +73,7 @@ def on_siistitty(polku):
 
 def siisti_tiedosto(polku, sisalto, prompt_pohja):
     prompt = prompt_pohja.replace("{sisalto}", sisalto).replace("{date}", str(date.today()))
-
-    payload = json.dumps({
-        "model": MALLI_TEKSTIT,
-        "prompt": prompt,
-        "stream": False
-    })
-
-    with open("/tmp/siisti_nauhoitus.json", "w") as f:
-        f.write(payload)
-
-    result = subprocess.run(
-        ["curl", "-s", OLLAMA_URL,
-         "-H", "Content-Type: application/json",
-         "-d", "@/tmp/siisti_nauhoitus.json"],
-        capture_output=True, text=True
-    )
-
-    data = json.loads(result.stdout)
-    return data.get("response", "")
+    return kysy_llm(prompt, malli=MALLI_TEKSTIT)
 
 def main():
     # Valitse prompt

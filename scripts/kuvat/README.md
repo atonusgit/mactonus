@@ -1,6 +1,6 @@
 # Kuva-analyysi — kuvailutulkkaus + jalostus
 
-Cron-pohjainen työnkulku kontissa: löytää vaultin `**/Liitteet/`-kuvat, tuottaa kuvauksen (Ollama `MALLI_KUVAT`), linkittää viereisiin muistiinpanoihin, ja jalostaa erikseen merkityt kuvatekstit.
+Cron-pohjainen työnkulku kontissa: löytää vaultin `**/Liitteet/`-kuvat, tuottaa kuvauksen (llama.cpp `MALLI_KUVAT`), linkittää viereisiin muistiinpanoihin, ja jalostaa erikseen merkityt kuvatekstit.
 
 ```mermaid
 sequenceDiagram
@@ -15,7 +15,7 @@ sequenceDiagram
         participant V as /vault
     end
     box rgb(232, 245, 233) Host-palvelin
-        participant Ol as Ollama
+        participant Ol as llama.cpp
     end
 
     Note over Cron,V: Vaihe 1 — kuvailutulkkaus, joka 15 min
