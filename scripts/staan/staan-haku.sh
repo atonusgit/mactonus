@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Staan Web Search - performs web searches via the Staan European Search API
-# Usage: staan-search.sh <query> [market] [offset] [--extra-snippets] [--full-content] [--max-snippets N] [--min-score N] [--include-domains domain1,domain2] [--exclude-domains domain1,domain2] [--raw]
+# Usage: staan-haku.sh <query> [market] [offset] [--extra-snippets] [--full-content] [--max-snippets N] [--min-score N] [--include-domains domain1,domain2] [--exclude-domains domain1,domain2] [--raw]
 
 set -euo pipefail
 

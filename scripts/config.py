@@ -11,9 +11,9 @@ OLLAMA_URL = "http://host.docker.internal:11434/api/generate"
 OLLAMA_AIKAKATKAISU = 300  # iso malli (esim. 31B) voi viedä >3 min cold-loadissa
 
 # Mallit luetaan .env:stä; defaultit toimivat ilman .env-merkintöjä.
-MALLI_KUVAT = os.environ.get("MALLI_KUVAT", "gemma4:e4b")              # encode_image.py
-MALLI_TEKSTIT = os.environ.get("MALLI_TEKSTIT", "gemma4:31b")          # cleanup_*, rename_file.py
-MALLI_KOMMENTOIJA = os.environ.get("MALLI_KOMMENTOIJA", "gemma4:31b")  # commenter.py
+MALLI_KUVAT = os.environ.get("MALLI_KUVAT", "gemma4:e4b")              # enkoodaa_kuva.py
+MALLI_TEKSTIT = os.environ.get("MALLI_TEKSTIT", "gemma4:31b")          # cleanup_*, nimea_tiedosto.py
+MALLI_KOMMENTOIJA = os.environ.get("MALLI_KOMMENTOIJA", "gemma4:31b")  # kommentoija.py
 
 # === Mistral (LLM-pilvipalvelu, käytetään YouTube-tiivistykseen) ===
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
@@ -34,10 +34,10 @@ VOXCPM_AIKAKATKAISU = 180
 VOXCPM_REFERENSSI = os.environ.get("VOXCPM_REFERENSSI", "anton.wav")
 
 # === Nauhoitus & kommentointi ===
-# Yhden nauhoituspätkän pituus sekunteina (record_and_transcribe.sh).
+# Yhden nauhoituspätkän pituus sekunteina (nauhoita_ja_litteroi.sh).
 NAUHOITUS_PATKA_PITUUS = int(os.environ.get("NAUHOITUS_PATKA_PITUUS", "120"))
 # Kommentoijan kynnys: kuinka monta uutta litteroitua pätkää tarvitaan
-# ennen kuin commenter.py kutsuu Ollamaa + VoxCPM2:ta.
+# ennen kuin kommentoija.py kutsuu Ollamaa + VoxCPM2:ta.
 KOMMENTOIJA_KYNNYS = int(os.environ.get("KOMMENTOIJA_KYNNYS", "1"))
 
 

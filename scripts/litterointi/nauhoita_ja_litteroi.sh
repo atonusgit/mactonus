@@ -1,6 +1,6 @@
 #!/bin/bash
 # Nauhoittaa 2min-pätkiä ja litteroi ne taustalla per pätkä.
-# Ctrl+C:n jälkeen kutsuu transcribe_session.sh:ta joka viimeistelee ja kokoaa .md:n.
+# Ctrl+C:n jälkeen kutsuu litteroi_istunto.sh:ta joka viimeistelee ja kokoaa .md:n.
 
 set -u
 SKRIPTIT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,7 +13,7 @@ KANSIO="$VAULT/mactonus/Nauhoitukset"
 tarkista_whisper() {
     if ! curl -s --max-time 2 -o /dev/null "$WHISPER_URL" 2>/dev/null; then
         printf "\033[1;31m✗ Whisper-server ei vastaa osoitteessa %s\033[0m\n" "$WHISPER_URL" >&2
-        printf "  Käynnistä ensin whisper_server.sh\n" >&2
+        printf "  Käynnistä ensin whisper_palvelin.sh\n" >&2
         exit 1
     fi
 }
@@ -40,9 +40,9 @@ litteroi() {
 
 viimeistele() {
     # rec kirjoittaa keskeneräisenkin .wav:n valmiiksi SIGINT:n jälkeen, joten
-    # se säilytetään ja transcribe_session.sh litteroi sen muiden mukana.
+    # se säilytetään ja litteroi_istunto.sh litteroi sen muiden mukana.
     echo ""
-    bash "$SKRIPTIT/transcribe_session.sh" "$SESSIO"
+    bash "$SKRIPTIT/litteroi_istunto.sh" "$SESSIO"
     exit $?
 }
 

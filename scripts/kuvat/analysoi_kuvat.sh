@@ -1,6 +1,6 @@
 #!/bin/bash
 
-LOCK=/tmp/analyze_images.lock
+LOCK=/tmp/analysoi_kuvat.lock
 MAKSIMI=20
 
 if [ -f "$LOCK" ]; then
@@ -34,7 +34,7 @@ while IFS= read -r kuva; do
 
     echo "$(date): Analysoidaan: $kuva"
 
-    TULOS=$(timeout 120 python3 /root/scripts/kuvat/encode_image.py "$kuva" "$ANALYYSI_MD" 2>&1)
+    TULOS=$(timeout 120 python3 /root/scripts/kuvat/enkoodaa_kuva.py "$kuva" "$ANALYYSI_MD" 2>&1)
     echo "$TULOS"
     UUSI_POHJA=$(echo "$TULOS" | grep "^UUSI_POHJA:" | cut -d: -f2)
 

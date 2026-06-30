@@ -1,2 +1,0 @@
-PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-* * * * * root python3 /root/scripts/siistiminen/cleanup_obsidian_notes.py >> /tmp/cleanup_obsidian_notes/stout.log 2>> /tmp/cleanup_obsidian_notes/sterr.log

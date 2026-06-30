@@ -7,9 +7,9 @@ sequenceDiagram
     autonumber
     box rgb(255, 243, 224) Kontti
         participant Cron as cron
-        participant AI as kuvat/analyze_images.sh
-        participant Enc as kuvat/encode_image.py
-        participant Ref as kuvat/refine_image_texts.py
+        participant AI as kuvat/analysoi_kuvat.sh
+        participant Enc as kuvat/enkoodaa_kuva.py
+        participant Ref as kuvat/jalosta_kuvatekstit.py
     end
     box rgb(243, 229, 245) Vault
         participant V as /vault
@@ -22,7 +22,7 @@ sequenceDiagram
     Cron->>AI: */15 min
     AI->>V: hae **/Liitteet/*.{png,jpg} ilman _teksti.md
     loop kuvat (max 20/ajo, flock estää päällekkäiset ajot)
-        AI->>Enc: timeout 120 python3 encode_image.py
+        AI->>Enc: timeout 120 python3 enkoodaa_kuva.py
         Enc->>V: lue kuva (base64) + Kehotteet/Analysoi kuva.md
         Enc->>Ol: POST /api/generate (MALLI_KUVAT)
         Ol-->>Enc: kuvaus
@@ -42,8 +42,8 @@ sequenceDiagram
 
 ## Skriptit
 
-- `analyze_images.sh` — cron-wrapper (flock), max 20 kuvaa/ajo
-- `encode_image.py` — kuva (base64) + kehote → `MALLI_KUVAT` → `*_teksti.md`
-- `refine_image_texts.py` — `#siisti-kuvailutulkkaus`-merkityt → `MALLI_TEKSTIT` → siistitty kuvaus + avainsanat
+- `analysoi_kuvat.sh` — cron-wrapper (flock), max 20 kuvaa/ajo
+- `enkoodaa_kuva.py` — kuva (base64) + kehote → `MALLI_KUVAT` → `*_teksti.md`
+- `jalosta_kuvatekstit.py` — `#siisti-kuvailutulkkaus`-merkityt → `MALLI_TEKSTIT` → siistitty kuvaus + avainsanat
 
 Kuva-analyysin kehote: `<vault>/mactonus/Kehotteet/Analysoi kuva.md` (valinnainen, fallback inline-defaulttiin).

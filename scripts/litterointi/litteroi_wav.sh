@@ -4,7 +4,7 @@ SKRIPTIT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 eval "$(python3 "$SKRIPTIT/../config.py")"
 
 if [ -z "$1" ]; then
-    echo "Käyttö: bash transcribe_single_wav.sh <tiedosto.wav>"
+    echo "Käyttö: bash litteroi_wav.sh <tiedosto.wav>"
     exit 1
 fi
 
@@ -17,7 +17,7 @@ fi
 
 if ! curl -s --max-time 2 -o /dev/null "$WHISPER_URL" 2>/dev/null; then
     printf "\033[1;31m✗ Whisper-server ei vastaa osoitteessa %s\033[0m\n" "$WHISPER_URL" >&2
-    printf "  Käynnistä ensin whisper_server.sh\n" >&2
+    printf "  Käynnistä ensin whisper_palvelin.sh\n" >&2
     exit 1
 fi
 

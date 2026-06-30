@@ -15,7 +15,7 @@ VAULT = "/vault"
 MAKSIMI = 4
 KEHOTE_TIEDOSTO = "/vault/mactonus/Kehotteet/Siisti kuvailutulkkaus.md"
 TAGI = "#siisti-kuvailutulkkaus"
-LUKKO = "/tmp/refine_image_texts.lock"
+LUKKO = "/tmp/jalosta_kuvatekstit.lock"
 
 def log(viesti):
     aika = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

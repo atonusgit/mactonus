@@ -1,2 +1,2 @@
 PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-0 9 * * * root python3 /root/scripts/eu_digital_sovereignty/daily.py >> /tmp/eu_digital_sovereignty/out.log 2>&1
+0 9 * * * root python3 /root/scripts/eu_digital_sovereignty/paivittain.py >> /tmp/eu_digital_sovereignty/out.log 2>&1

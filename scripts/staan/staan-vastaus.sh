@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Staan Answer - generates AI-powered grounded answers via Staan API
-# Usage: staan-answer.sh <question> [--language fr] [--stream] [--related-queries] [--mode short|long] [--raw]  [--no-query-rewrite]
+# Usage: staan-vastaus.sh <question> [--language fr] [--stream] [--related-queries] [--mode short|long] [--raw]  [--no-query-rewrite]
 
 set -euo pipefail
 

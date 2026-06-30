@@ -7,14 +7,14 @@ sequenceDiagram
     autonumber
     actor U as Käyttäjä
     box rgb(255, 243, 224) Kontti
-        participant Co as puhe/commenter.py
+        participant Co as kommentointi/kommentoija.py
     end
     box rgb(243, 229, 245) Vault
         participant V as Nauhoitukset/tmp_chunks/SESSIO/
     end
     box rgb(232, 245, 233) Host-palvelimet
         participant Ol as Ollama
-        participant Vx as voxcpm2_server :8179
+        participant Vx as voxcpm2_palvelin :8179
     end
     box rgb(245, 245, 245) Laite
         participant S as Kaiuttimet
@@ -37,7 +37,7 @@ sequenceDiagram
 
 ## Skriptit
 
-- `commenter.py` — kuuntelee aktiivista istuntoa ja kommentoi (`comm` = docker exec)
-- `say.py` — yksinkertainen TTS-asiakas debuggaukseen (`host.docker.internal:8179`)
+- `kommentoija.py` — kuuntelee aktiivista istuntoa ja kommentoi (`comm` = docker exec)
+- `sano.py` — yksinkertainen TTS-asiakas debuggaukseen (`host.docker.internal:8179`)
 
-Vaatii kehotteen `<vault>/mactonus/Kehotteet/Kommentoija.md` ja käynnissä olevan VoxCPM2-palvelimen ([`paikallinen-puheassistentti`](https://github.com/atonusgit/paikallinen-puheassistentti)).
+Vaatii kehotteen `<vault>/mactonus/Kehotteet/Kommentoija.md` ja käynnissä olevan VoxCPM2-palvelimen ([`scripts/puhesynteesi/`](../puhesynteesi/)).

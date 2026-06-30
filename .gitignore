@@ -25,6 +25,13 @@ scripts/aihe_seuraaja/historia/
 scripts/pi_vault_sync/.tila.json
 scripts/pi_vault_sync/.tila.json.tmp
 
+# Puhesynteesi (TTS, host-puoli): raskaat/henkilökohtaiset, ei versioida
+scripts/puhesynteesi/.venv/
+scripts/puhesynteesi/voices/
+scripts/puhesynteesi/output/
+
+# Vanha erillinen TTS-repo — absorboitu scripts/puhesynteesi/:hyn. Poista host-puolelta
+# kun olet siirtänyt voices/ + .venv uuteen polkuun.
 paikallinen-puheassistentti
 
 # Närhisulka on oma itsenäinen projektinsa -> ei versioida mactonuksen mukana

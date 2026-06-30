@@ -6,9 +6,9 @@ Ajaa **pi-agenttia** headless Telegramin yli: käyttäjän viestit menevät pi:l
 flowchart TB
     Msg([Telegram-viesti]) --> T{tekstiä?}
     T -->|ei liite| NO["vastaa: liitteitä ei lueta"]
-    T -->|kyllä| B["telegram_bridge.py<br/>esikasittele"]
+    T -->|kyllä| B["telegram_silta.py<br/>esikasittele"]
     B --> Y{YouTube-linkki?}
-    Y -->|kyllä| YT["download_transcript.sh"]
+    Y -->|kyllä| YT["lataa_transkriptio.sh"]
     Y -->|ei| P{.pdf-linkki?}
     P -->|kyllä| PD["tallenna_pdf.py"]
     P -->|ei| W{muu http-linkki?}

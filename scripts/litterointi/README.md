@@ -7,9 +7,9 @@ sequenceDiagram
     autonumber
     actor U as Käyttäjä
     box rgb(227, 242, 253) Host-skriptit
-        participant R as litterointi/record_and_transcribe.sh
-        participant T as litterointi/transcribe_session.sh
-        participant RF as litterointi/rename_file.py
+        participant R as litterointi/nauhoita_ja_litteroi.sh
+        participant T as litterointi/litteroi_istunto.sh
+        participant RF as litterointi/nimea_tiedosto.py
     end
     box rgb(232, 245, 233) Host-palvelimet
         participant Rec as sox/rec
@@ -45,21 +45,21 @@ sequenceDiagram
 
 ```bash
 # Nauhoitus (Ctrl+C lopettaa ja viimeistelee)
-bash scripts/litterointi/record_and_transcribe.sh
+bash scripts/litterointi/nauhoita_ja_litteroi.sh
 
 # Viimeistele keskeytynyt istunto käsin (wavit tmp_chunks/$SESSIO/:ssä)
-bash scripts/litterointi/transcribe_session.sh 2026-04-23_17-50-47
+bash scripts/litterointi/litteroi_istunto.sh 2026-04-23_17-50-47
 
 # Litteroi yksittäinen valmis wav
-bash scripts/litterointi/transcribe_single_wav.sh /polku/tiedostoon.wav
+bash scripts/litterointi/litteroi_wav.sh /polku/tiedostoon.wav
 ```
 
 ## Skriptit
 
-- `whisper_server.sh` — käynnistää whisper.cpp-palvelimen (`:8178`)
-- `record_and_transcribe.sh` — 2 min wav-pätkät + live-litterointi taustalla
-- `transcribe_session.sh` — istunnon viimeistely: backup-wav, puuttuvat litteroinnit, kokoaa `.md`:n, nimeää
-- `transcribe_single_wav.sh` — yksittäinen valmis wav → `.txt`
-- `rename_file.py` — AI-pohjainen `.md`:n uudelleennimeäminen (Ollama)
+- `whisper_palvelin.sh` — käynnistää whisper.cpp-palvelimen (`:8178`)
+- `nauhoita_ja_litteroi.sh` — 2 min wav-pätkät + live-litterointi taustalla
+- `litteroi_istunto.sh` — istunnon viimeistely: backup-wav, puuttuvat litteroinnit, kokoaa `.md`:n, nimeää
+- `litteroi_wav.sh` — yksittäinen valmis wav → `.txt`
+- `nimea_tiedosto.py` — AI-pohjainen `.md`:n uudelleennimeäminen (Ollama)
 
 Host-binäärit: `/opt/homebrew/bin/{rec,sox}` ja `whisper-server` PATHissa. Skriptien väliset polut ratkaistaan `BASH_SOURCE`:n kautta, joten repo voi olla missä tahansa host-kansiossa.

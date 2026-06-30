@@ -1,0 +1,2 @@
+PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+#0 */1 * * * root python3 /root/scripts/siistiminen/siisti_transkriptit.py >> /tmp/siisti_transkriptit/stout.log 2>> /tmp/siisti_transkriptit/sterr.log

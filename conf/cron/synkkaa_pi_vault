@@ -1,0 +1,2 @@
+PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/sbin:/bin
+*/2 * * * * root python3 /root/scripts/pi_vault_sync/synkkaa.py >> /tmp/pi_vault_sync/out.log 2>&1

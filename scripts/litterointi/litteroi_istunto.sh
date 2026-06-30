@@ -2,7 +2,7 @@
 # Viimeistelee nauhoitusistunnon: litteroi puuttuvat pätkät, kokoaa .md:n,
 # nimeää sen AI-mallilla ja siivoaa istuntokansion vain jos kaikki onnistui.
 # Käyttö:
-#   bash transcribe_session.sh 2026-04-23_14-03-17
+#   bash litteroi_istunto.sh 2026-04-23_14-03-17
 
 set -u
 
@@ -24,7 +24,7 @@ LOPULLINEN="$KANSIO/$SESSIO.md"
 
 if ! curl -s --max-time 2 -o /dev/null "$WHISPER_URL" 2>/dev/null; then
     printf "\033[1;31m✗ Whisper-server ei vastaa osoitteessa %s\033[0m\n" "$WHISPER_URL" >&2
-    printf "  Käynnistä ensin whisper_server.sh\n" >&2
+    printf "  Käynnistä ensin whisper_palvelin.sh\n" >&2
     exit 1
 fi
 
@@ -117,5 +117,5 @@ fi
 # Kaikki OK → siivoa istuntokansio
 rm -rf "$TEMP"
 
-UUSI=$(python3 "$SKRIPTIT/rename_file.py" "$LOPULLINEN" "$SESSIO" "$KANSIO")
+UUSI=$(python3 "$SKRIPTIT/nimea_tiedosto.py" "$LOPULLINEN" "$SESSIO" "$KANSIO")
 printf "\033[1;32m✓ Valmis:\033[0m %s\n" "${UUSI:-$LOPULLINEN}"

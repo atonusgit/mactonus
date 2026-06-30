@@ -1,0 +1,2 @@
+PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/15 * * * * root /root/scripts/kuvat/analysoi_kuvat.sh >> /tmp/analysoi_kuvat/stout.log 2>> /tmp/analysoi_kuvat/sterr.log

@@ -6,7 +6,7 @@ from config import MALLI_KUVAT, OLLAMA_URL
 from tiedosto_apu import siisti_tiedostonimi
 
 if len(sys.argv) < 2:
-    print("Käyttö: python3 encode_image.py <kuvatiedosto> [tulostiedosto.md]")
+    print("Käyttö: python3 enkoodaa_kuva.py <kuvatiedosto> [tulostiedosto.md]")
     sys.exit(1)
 
 kuva = sys.argv[1]

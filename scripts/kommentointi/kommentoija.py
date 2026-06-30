@@ -3,7 +3,7 @@
 
 Aja kontissa `comm`-aliaksella (docker exec). Vaatii:
   - Ollama hostilla (host.docker.internal:11434) ja MALLI_KOMMENTOIJA ladattuna
-  - voxcpm2_server.py käynnissä hostilla (host.docker.internal:8179)
+  - voxcpm2_palvelin.py käynnissä hostilla (host.docker.internal:8179)
   - Vault-kehote tiedostossa /vault/mactonus/Kehotteet/Kommentoija.md
 """
 
@@ -112,7 +112,7 @@ def puhu(teksti: str) -> None:
         print(f"\033[1;31m✗ VoxCPM2-virhe ({e.code}): {viesti}\033[0m", file=sys.stderr)
     except urllib.error.URLError as e:
         print(
-            f"\033[1;31m✗ VoxCPM2-yhteysvirhe: {e}. Onko voxcpm2_server.py käynnissä?\033[0m",
+            f"\033[1;31m✗ VoxCPM2-yhteysvirhe: {e}. Onko voxcpm2_palvelin.py käynnissä?\033[0m",
             file=sys.stderr,
         )
 

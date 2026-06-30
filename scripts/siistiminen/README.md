@@ -8,8 +8,8 @@ sequenceDiagram
     actor U as Käyttäjä
     box rgb(255, 243, 224) Kontti
         participant Cron as cron
-        participant CO as siistiminen/cleanup_obsidian_notes.py
-        participant CT as siistiminen/cleanup_transcripts.py
+        participant CO as siistiminen/siisti_muistiinpanot.py
+        participant CT as siistiminen/siisti_transkriptit.py
     end
     box rgb(243, 229, 245) Vault
         participant V as /vault
@@ -28,7 +28,7 @@ sequenceDiagram
     end
 
     Note over U,CT: Manuaalinen — transkriptit
-    U->>CT: docker exec ... cleanup_transcripts.py [prompt]
+    U->>CT: docker exec ... siisti_transkriptit.py [prompt]
     CT->>V: lue Dokumenttimuoto-kehotteet/<prompt>.md
     CT->>V: hae Nauhoitukset/*.md, *[siisti]*-merkki
     loop merkityt (max 4)
@@ -40,5 +40,5 @@ sequenceDiagram
 
 ## Skriptit
 
-- `cleanup_obsidian_notes.py` — `*[siisti]*`-merkityt `/vault/**/*.md` (cron 1 min); kehote inline-koodissa
-- `cleanup_transcripts.py [prompt]` — `Nauhoitukset/*.md` + valittu `Dokumenttimuoto-kehotteet/<prompt>.md` (manuaalinen)
+- `siisti_muistiinpanot.py` — `*[siisti]*`-merkityt `/vault/**/*.md` (cron 1 min); kehote inline-koodissa
+- `siisti_transkriptit.py [prompt]` — `Nauhoitukset/*.md` + valittu `Dokumenttimuoto-kehotteet/<prompt>.md` (manuaalinen)

@@ -4,7 +4,7 @@ YouTube-linkki → litterointi (yt-dlp:n tekstitykset) → suomenkielinen tiivis
 
 ```mermaid
 flowchart LR
-    URL([YouTube-URL]) --> DL["download_transcript.sh<br/>yt-dlp: tekstitykset + meta"]
+    URL([YouTube-URL]) --> DL["lataa_transkriptio.sh<br/>yt-dlp: tekstitykset + meta"]
     DL --> TXT["litterointi + header<br/>otsikko · pvm · kanava"]
     TXT --> SUM["tiivista_youtube.py"]
     SUM -->|Mistral| MD["Clippings/YouTube/<br/>frontmatter + tiivistelmä"]
@@ -12,7 +12,7 @@ flowchart LR
 
 ## Skriptit
 
-- `download_transcript.sh` — hakee tekstitykset ja metatiedot (otsikko, julkaisupäivä, kanava)
+- `lataa_transkriptio.sh` — hakee tekstitykset ja metatiedot (otsikko, julkaisupäivä, kanava)
 - `tiivista_youtube.py` — tiivistää litteroinnin Mistralilla, kirjoittaa lopullisen frontmatter-muodon
 
 ## Jaettu logiikka

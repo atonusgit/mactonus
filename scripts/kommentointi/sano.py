@@ -3,14 +3,14 @@
 VoxCPM2-client kontista. Lähettää tekstin hostin VoxCPM2-palvelimelle,
 joka generoi ja soittaa hostin kaiuttimissa.
 
-Vaatii että voxcpm2_server.py on käynnissä hostilla osoitteessa
+Vaatii että voxcpm2_palvelin.py on käynnissä hostilla osoitteessa
 host.docker.internal:8179.
 
 Käyttö:
-  python3 say.py "Hei maailma"
-  python3 say.py --ref anton.wav "Hei"
-  python3 say.py --voice "A deep male voice" "Hello"
-  python3 say.py --no-play -o /vault/foo.wav "Vain tiedostoon"
+  python3 sano.py "Hei maailma"
+  python3 sano.py --ref anton.wav "Hei"
+  python3 sano.py --voice "A deep male voice" "Hello"
+  python3 sano.py --no-play -o /vault/foo.wav "Vain tiedostoon"
 """
 
 import argparse
@@ -43,7 +43,7 @@ def puhu(args):
         with urllib.request.urlopen(pyynto, timeout=VOXCPM_AIKAKATKAISU) as vastaus:
             tulos = json.loads(vastaus.read().decode("utf-8"))
     except urllib.error.URLError as e:
-        print(f"Yhteysvirhe: {e}. Onko voxcpm2_server.py käynnissä hostilla?", file=sys.stderr)
+        print(f"Yhteysvirhe: {e}. Onko voxcpm2_palvelin.py käynnissä hostilla?", file=sys.stderr)
         return False
 
     if tulos.get("ok"):

@@ -81,7 +81,7 @@ def historia_tekstina(nimi):
 
 def poimi_vastaus(stdout):
     # Lopullinen vastaus = viimeisen assistant-roolisen message_end-tapahtuman tekstit.
-    # Sama logiikka kuin scripts/telegram/telegram_bridge.py:n striimausparserissa.
+    # Sama logiikka kuin scripts/telegram/telegram_silta.py:n striimausparserissa.
     teksti = None
     for rivi in stdout.splitlines():
         rivi = rivi.strip()
@@ -142,7 +142,7 @@ def rakenna_prompt(aihe, historia):
 def laheta_telegram(viesti, chat=None):
     # Ei --raaka: pi:n vapaamuotoinen vastaus riisutaan markdownista (riisu_markdown),
     # jotta Telegramissa näkyy siisti plain-teksti — sama käyttäytyminen kuin
-    # interaktiivisessa sillassa (telegram_bridge.py).
+    # interaktiivisessa sillassa (telegram_silta.py).
     laheta = os.path.join(TELEGRAM_DIR, "laheta.py")
     cmd = [sys.executable, laheta, viesti]
     if chat:

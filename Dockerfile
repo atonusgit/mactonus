@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # yt-dlp YouTube-transkriptioiden lataukseen (Telegram-silta käyttää sitä
-# download_transcript.sh:n kautta). Asennetaan pipillä eikä apt:lla, koska
+# lataa_transkriptio.sh:n kautta). Asennetaan pipillä eikä apt:lla, koska
 # YouTube rikkoo yt-dlp:n usein -> apt-versio vanhenee nopeasti.
 RUN pip install --no-cache-dir yt-dlp
 
@@ -39,4 +39,4 @@ WORKDIR /root
 # pi on pelkkä interaktiivinen CLI (ei gateway-tilaa), joten kontti ajaa cronin
 # ja — jos Telegram-token on annettu — Telegram-sillan, joka ajaa pi:tä headless.
 # Silta uudelleenkäynnistyy jos se kaatuu. pi:tä käytetään myös: docker exec -it mactonus pi
-CMD ["sh", "-c", "if [ -n \"$TELEGRAM_BOT_TOKEN\" ]; then (while true; do python3 /root/scripts/telegram/telegram_bridge.py; echo 'silta kaatui, uudelleenkäynnistys 5 s päästä'; sleep 5; done >> /tmp/telegram/silta.log 2>&1) & fi; cron -f"]
+CMD ["sh", "-c", "if [ -n \"$TELEGRAM_BOT_TOKEN\" ]; then (while true; do python3 /root/scripts/telegram/telegram_silta.py; echo 'silta kaatui, uudelleenkäynnistys 5 s päästä'; sleep 5; done >> /tmp/telegram/silta.log 2>&1) & fi; cron -f"]

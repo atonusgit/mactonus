@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # verkko_apu.py — yhteinen verkkosivun kaavinta: robots.txt-tarkistus, sivun haku,
 # HTML->teksti, otsikon ja julkaisupäivän kaivuu. Käyttäjät:
-#   - eu_digital_sovereignty/daily.py  (Staan-uutisten sisällön luku)
+#   - eu_digital_sovereignty/paivittain.py  (Staan-uutisten sisällön luku)
 #   - verkkosivu/tallenna_verkkosivu.py (linkin tallennus tiivistelmäksi)
 # Pelkkää stdlibiä, ei uutta riippuvuutta.
 

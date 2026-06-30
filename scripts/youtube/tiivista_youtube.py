@@ -4,7 +4,7 @@
 # iso paikallinen malli) ja kirjoittaa tiedoston lopulliseen muotoon: frontmatter + tiivistelmä.
 # Litterointia itseään ei säilytetä.
 #
-# Kutsutaan download_transcript.sh:n lopussa sen luomalla välitiedostolla, jonka muoto on:
+# Kutsutaan lataa_transkriptio.sh:n lopussa sen luomalla välitiedostolla, jonka muoto on:
 #   "# <otsikko>\nLähde: <url>\nPäiväys: <pvm>\nJulkaisija: <kanava>\n\n---\n\n<litterointi>"
 # Atominen kirjoitus: jos Mistral epäonnistuu, välitiedosto (litterointi) jää ennalleen.
 #

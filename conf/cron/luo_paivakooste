@@ -1,0 +1,2 @@
+PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/sbin:/bin
+#*/10 9 * * 1-5 root python3 /root/scripts/yhteenveto/luo_paivakooste.py >> /tmp/luo_paivakooste/stout.log 2>> /tmp/luo_paivakooste/sterr.log

@@ -17,7 +17,7 @@ import argparse, glob, os, re, sys
 CRON_DIR = "/etc/cron.d"
 LOKI_OLETUS_DIR = "/tmp/cron"
 # Prefiksi erottaa skillin luomat cron-tiedostot järjestelmän omista (esim.
-# analyze_images), jotta listaus/poisto eivät koske käsin tehtyihin ajoihin.
+# analysoi_kuvat), jotta listaus/poisto eivät koske käsin tehtyihin ajoihin.
 PREFIX = "aj_"
 PATH_RIVI = "PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/sbin:/bin"
 

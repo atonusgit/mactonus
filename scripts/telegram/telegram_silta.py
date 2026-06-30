@@ -77,14 +77,14 @@ def sessio_id(chat_id):
     return f"tg-{chat_id}-{suffiksi}"
 
 # YouTube-linkin tunnistus viestistä. Jos linkki löytyy, silta lataa sen
-# transkription deterministisesti download_transcript.sh:lla ENNEN kuin viesti
+# transkription deterministisesti lataa_transkriptio.sh:lla ENNEN kuin viesti
 # menee pi:lle (ks. lataa_transkriptio). Polku selvitetään tämän tiedoston
 # sijainnista, joten se toimii myös kontin ulkopuolella.
 YOUTUBE_RE = re.compile(
     r"https?://(?:www\.|m\.)?(?:youtube\.com/(?:watch\?\S*v=|shorts/|live/)|youtu\.be/)[\w\-]+\S*"
 )
 _SKRIPTIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LATAA_SKRIPTI = os.path.join(_SKRIPTIT, "youtube", "download_transcript.sh")
+LATAA_SKRIPTI = os.path.join(_SKRIPTIT, "youtube", "lataa_transkriptio.sh")
 # Sisältää litteroinnin haun JA suomenkielisen tiivistyksen (Mistral) -> reilumpi raja.
 LATAUS_AIKAKATKAISU = int(os.environ.get("YOUTUBE_AIKAKATKAISU", "600"))
 # YouTube-litterointi on oletuksena päällä. Voidaan kytkeä pois esim.

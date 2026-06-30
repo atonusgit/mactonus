@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Telegram-API:n jaetut apurit. Käyttäjät: telegram_bridge.py (saapuvat viestit)
+# Telegram-API:n jaetut apurit. Käyttäjät: telegram_silta.py (saapuvat viestit)
 # ja laheta.py (lähtevät viestit cron-jobeista).
 #
 # Token luetaan ympäristömuuttujasta TELEGRAM_BOT_TOKEN joka kutsulla, jotta

@@ -1,0 +1,2 @@
+PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+* * * * * root python3 /root/scripts/siistiminen/siisti_muistiinpanot.py >> /tmp/siisti_muistiinpanot/stout.log 2>> /tmp/siisti_muistiinpanot/sterr.log

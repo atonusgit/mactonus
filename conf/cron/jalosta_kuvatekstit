@@ -1,0 +1,2 @@
+PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin    
+*/5 * * * * root python3 /root/scripts/kuvat/jalosta_kuvatekstit.py >> /tmp/jalosta_kuvatekstit/stout.log 2>> /tmp/jalosta_kuvatekstit/sterr.log
