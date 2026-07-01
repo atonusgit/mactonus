@@ -61,6 +61,26 @@ def riisu_markdown(teksti):
     return teksti
 
 
+def paivita_tai_laheta(chat_id, teksti, message_id=None, loki=print, parse_mode=None):
+    # Lähettää uuden viestin (message_id=None) tai muokkaa olemassa olevaa
+    # paikallaan (editMessageText). Palauttaa käytetyn message_id:n (tai vanhan,
+    # jos kutsu epäonnistui). Tarkoitettu lyhyisiin status-riveihin (esim.
+    # työkaluilmoitukset) — ei paloitella, teksti oletetaan mahtuvan yhteen viestiin.
+    metodi = "editMessageText" if message_id else "sendMessage"
+    data = {"chat_id": chat_id, "text": (teksti or "…")[:4000]}
+    if message_id:
+        data["message_id"] = message_id
+    if parse_mode:
+        data["parse_mode"] = parse_mode
+    try:
+        vastaus = api_kutsu(metodi, data)
+        return (vastaus.get("result") or {}).get("message_id", message_id)
+    except Exception as e:
+        # Esim. "message is not modified" (identtinen teksti) -> pidetään vanha id.
+        loki(f"{metodi} epäonnistui chatille {chat_id}: {e}")
+        return message_id
+
+
 def laheta_viesti(chat_id, teksti, loki=print, parse_mode=None):
     # Telegram rajoittaa 4096 merkkiin -> paloitellaan turvallisesti.
     # parse_mode (esim. "HTML") mahdollistaa muotoilun, kuten <code>monospace</code>.

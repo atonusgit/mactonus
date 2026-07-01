@@ -28,7 +28,7 @@ import html, json, os, re, sys, time, signal, subprocess, threading
 from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from telegram_api import api_kutsu, laheta_viesti, riisu_markdown
+from telegram_api import api_kutsu, laheta_viesti, paivita_tai_laheta, riisu_markdown
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 SALLITUT = {c.strip() for c in os.environ.get("TELEGRAM_SALLITUT_CHATIT", "").split(",") if c.strip()}
@@ -224,11 +224,10 @@ def esikasittele(teksti):
     return teksti
 
 
-def muotoile_tyokalu(toolName, args):
-    # Kaksirivinen, ihmisluettava ilmoitus Telegramiin (parse_mode=HTML):
-    #   🔧 Käytän työkalua
-    #   <code>varsinainen tieto monospacena</code>
-    # Jos työkalulla ei ole selkeää dataa, näytetään nimi otsikkorivillä.
+def tyokalu_rivi(toolName, args):
+    # Yksirivinen, HTML-escapattu kuvaus työkalukutsusta (esim. "bash: ls -la").
+    # Rivit kerätään expandable-blockquoteen, joten yksi viesti riittää koko
+    # työkaluhistorialle. Detalji poimitaan tutuimmista argumenttiavaimista.
     detalji = ""
     if isinstance(args, dict):
         for avain in ("command", "path", "file_path", "url", "pattern", "query"):
@@ -240,13 +239,11 @@ def muotoile_tyokalu(toolName, args):
                 if arvo not in (None, "", [], {}):
                     detalji = str(arvo)
                     break
-    if detalji:
-        detalji = " ".join(detalji.split())
-        if len(detalji) > 200:
-            detalji = detalji[:199] + "…"
-        return f"🔧 Käytän työkalua\n<code>{html.escape(detalji)}</code>"
-    return (f"🔧 Käytän työkalua ({html.escape(toolName)})" if toolName
-            else "🔧 Käytän työkalua")
+    detalji = " ".join(detalji.split())
+    if len(detalji) > 200:
+        detalji = detalji[:199] + "…"
+    nimi = toolName or "työkalu"
+    return html.escape(f"{nimi}: {detalji}" if detalji else nimi)
 
 
 def aja_pi(chat_id, teksti, ajattelu=None):
@@ -287,6 +284,8 @@ def aja_pi(chat_id, teksti, ajattelu=None):
     vahti.start()
 
     vastaus, virhe, rivit, ilmoitettu_ajattelu = None, None, [], False
+    # Työkalut kerätään yhteen expandable-blockquote-viestiin, jota päivitetään paikallaan.
+    tyokalu_rivit, tyokalu_viesti_id = [], None
     try:
         for rivi in proc.stdout:
             rivit.append(rivi)
@@ -301,9 +300,16 @@ def aja_pi(chat_id, teksti, ajattelu=None):
             if tyyppi == "tool_execution_start":
                 if KERRO_TYOKALUT:
                     args = tapahtuma.get("args", tapahtuma.get("arguments"))
-                    laheta_viesti(chat_id,
-                                  muotoile_tyokalu(tapahtuma.get("toolName"), args),
-                                  loki=loki, parse_mode="HTML")
+                    tyokalu_rivit.append(tyokalu_rivi(tapahtuma.get("toolName"), args))
+                    runko = "\n".join(tyokalu_rivit)
+                    # ponytail: leikkaa vanhimmat jos viesti kasvaa liian isoksi
+                    # (Telegram-raja 4096, jätä varaa otsikolle+tageille).
+                    if len(runko) > 3500:
+                        runko = "…\n" + runko[-3500:]
+                    teksti = (f"🔧 Työkalut ({len(tyokalu_rivit)})\n"
+                              f"<blockquote expandable>{runko}</blockquote>")
+                    tyokalu_viesti_id = paivita_tai_laheta(
+                        chat_id, teksti, tyokalu_viesti_id, loki=loki, parse_mode="HTML")
             elif tyyppi in ("message_start", "message_update") and not ilmoitettu_ajattelu:
                 # Ensimmäinen ei-tyhjä thinking-sisältöosa = malli miettii oikeasti.
                 # Ilmoitetaan kerran (todiste + palaute).
