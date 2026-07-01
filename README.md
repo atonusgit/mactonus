@@ -60,6 +60,25 @@ Agentti ja koodi on eriytetty **kahteen git-repoon**:
 
 **Periaate — "skillit kuvaavat, skriptit tekevät":** skill on ohut `SKILL.md`-osoitin, joka kertoo agentille *milloin* ja *minkä* `scripts/`-skriptin ajaa; suoritettava logiikka asuu aina `scripts/`:ssä. Näin sama kyky toimii agentista riippumatta (cron, käsin tai vaikka toinen agentti).
 
+## Kontekstin kompaktointi (pi ↔ llama.cpp)
+
+pi lähettää koko keskusteluhistorian joka pyynnöllä. llama.cpp **ei** katkaise liian isoa promptia — se hylkää 400:lla ([llama.cpp#17284](https://github.com/ggml-org/llama.cpp/issues/17284)) toisin kuin Ollama, joka katkaisi hiljaa palvelinpuolella. `scripts/kompaktointi_valipalvelin.py` on **oma kompaktointikerroksemme**: ohut proxy (Python-stdlib, ei riippuvuuksia) pi:n ja llama.cpp:n välissä, joka pitää promptin konteksti-ikkunassa:
+
+- **laskee** promptin koon tarkasti llama.cpp:n `/apply-template` + `/tokenize`:lla (chat-template + tools mukaan; fallback: sisältö × `KERROIN`, ettei aliarvioida),
+- **leikkaa** promptin hystereesillä: kun se ylittää `YLA_OSUUS` (oletus 70 %) ikkunasta, kompaktoi kunnes alle `ALA_OSUUS` (oletus 40 %) — tiivistää vanhimman viestin ~3 lauseeseen (rullaava tiivistys, cachettu) tai pudottaa sen; system- ja nykyinen viesti säilyvät. Iso pudotus alarajaan antaa pelivaraa usealle vuorolle → tiivistys ei aja joka pyynnöllä,
+- kirjoittaa vastauksen `finish_reason: length → stop`, jottei pi näytä katkennutta vastausta virheenä,
+- striimaa SSE:n ja päättää sen siististi ([DONE]/EOF/idle) → ei jäätymistä.
+
+Ajetaan kontissa pi:n rinnalle; pi osoittaa siihen (`.pi/models.json` `baseUrl` → `127.0.0.1:8081`, proxy välittää `host.docker.internal:8080`:aan). Vaatii llama.cpp:n yhdellä slotilla (`--parallel 1`), jotta koko ikkuna on per pyyntö.
+
+```bash
+docker exec -d mactonus python3 /root/scripts/kompaktointi_valipalvelin.py   # -it näyttää lokit
+```
+
+**Väliaikainen kerros:** tämä paikkaa sen, ettei pi:n oma compaction vielä toimi luotettavasti. Kun se korjautuu, kerroksen voi kytkeä pois: pi:n `baseUrl` takaisin :8080:aan (tai `TIIVISTA=0` pelkkään pudotukseen). Säädöt env:llä: `YLA_OSUUS` (0.7), `ALA_OSUUS` (0.4), `TIIVISTA`, `TIIVISTE_MIN`, `KONTEKSTI`.
+
+Huom: pi:n oma konteksti-indikaattori (esim. `87.5%/33k`) **ei laske** kompaktoinnista — se mittaa pi:n omaa täyttä historiaa, jonka pi lähettää joka pyynnöllä. Leikkaus tapahtuu pi:n takana (proxy → llama.cpp), joten sen näkee vain proxyn lokista (`sovitus: tiivistetty N …`), ei pi:n mittarista.
+
 ## Työnkulut
 
 Kunkin työnkulun **tarkempi toiminta ja kuvaaja** on sen oman kansion READMEssä (linkit alla).
@@ -205,6 +224,7 @@ mactonus/
 │   ├── mistral_apu.py         # jaettu: Mistral-kutsu + tiivistyskehote + frontmatter-muoto
 │   ├── verkko_apu.py          # jaettu: robots + haku + HTML→teksti + meta
 │   ├── tiedosto_apu.py        # jaettu: tiedostonimien siistiminen (säilyttää ääkköset)
+│   ├── kompaktointi_valipalvelin.py  # pi↔llama.cpp: pitää promptin konteksti-ikkunassa
 │   ├── litterointi/           # HOST: nauhoitus + whisper              → README
 │   ├── kuvat/                 # KONTTI cron: kuva-analyysi             → README
 │   ├── siistiminen/           # KONTTI: muistiinpanot + transkriptit   → README
