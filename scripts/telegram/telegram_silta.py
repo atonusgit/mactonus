@@ -41,6 +41,12 @@ NOLLAUS_KOMENNOT = {"/uusi", "/reset", "/nollaa", "uusi keskustelu"}
 # Per-chat session-suffiksi tallennetaan tähän; suffiksin kasvatus = uusi sessio.
 SUFFIKSI_TIEDOSTO = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                  "sessio_suffiksit.json")
+# Avainsanat jotka asettavat chatin ajattelutason (--thinking). Taso säilyy per
+# chat kunnes vaihdetaan; oletus = ei lippua -> pi:n defaultThinkingLevel (off).
+AJATTELU_KOMENNOT = {"/ajattele": "high", "/mieti": "high",
+                     "/nopea": "off", "/pika": "off"}
+AJATTELU_TIEDOSTO = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 "ajattelu_tasot.json")
 
 
 # Per-chat keskustelu pidetään erillään session-id:llä. Suffiksi mahdollistaa
@@ -48,33 +54,44 @@ SUFFIKSI_TIEDOSTO = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # seuraava viesti saa tuoreen session-id:n -> pi luo uuden session ja lukee mm.
 # skill-katalogin uudelleen. `--session-id` luo session jos sitä ei ole ja jatkaa
 # olemassa olevaa.
-def _lue_suffiksit():
+def _lue_json(polku):
     try:
-        with open(SUFFIKSI_TIEDOSTO, encoding="utf-8") as f:
+        with open(polku, encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, ValueError):
         return {}
 
 
-def _tallenna_suffiksit(suffiksit):
+def _tallenna_json(polku, data):
     # Atominen kirjoitus (temp + rename), jottei tiedosto korruptoidu.
-    tmp = f"{SUFFIKSI_TIEDOSTO}.tmp"
+    tmp = f"{polku}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(suffiksit, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, SUFFIKSI_TIEDOSTO)
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, polku)
 
 
 def nollaa_sessio(chat_id):
     # Kasvata chatin suffiksia -> seuraava viesti aloittaa tuoreen session.
-    suffiksit = _lue_suffiksit()
+    suffiksit = _lue_json(SUFFIKSI_TIEDOSTO)
     suffiksit[chat_id] = int(suffiksit.get(chat_id, 1)) + 1
-    _tallenna_suffiksit(suffiksit)
+    _tallenna_json(SUFFIKSI_TIEDOSTO, suffiksit)
     return suffiksit[chat_id]
 
 
 def sessio_id(chat_id):
-    suffiksi = _lue_suffiksit().get(chat_id, 1)
+    suffiksi = _lue_json(SUFFIKSI_TIEDOSTO).get(chat_id, 1)
     return f"tg-{chat_id}-{suffiksi}"
+
+
+def aseta_ajattelu(chat_id, taso):
+    tasot = _lue_json(AJATTELU_TIEDOSTO)
+    tasot[chat_id] = taso
+    _tallenna_json(AJATTELU_TIEDOSTO, tasot)
+
+
+def ajattelu_taso(chat_id):
+    # None = älä anna --thinking-lippua (pi käyttää defaultThinkingLevel:iä).
+    return _lue_json(AJATTELU_TIEDOSTO).get(chat_id)
 
 # YouTube-linkin tunnistus viestistä. Jos linkki löytyy, silta lataa sen
 # transkription deterministisesti lataa_transkriptio.sh:lla ENNEN kuin viesti
@@ -232,13 +249,15 @@ def muotoile_tyokalu(toolName, args):
             else "🔧 Käytän työkalua")
 
 
-def aja_pi(chat_id, teksti):
+def aja_pi(chat_id, teksti, ajattelu=None):
     # --session-id pitää tämän chatin keskustelun erillään ja jatkaa sitä
     # (luodaan jos puuttuu). --mode json antaa rakenteisen JSONL-tapahtumavirran,
     # joka luetaan rivi kerrallaan (striimaus), jotta työkalukutsut voidaan
     # ilmoittaa Telegramiin heti niiden alkaessa (tool_execution_start). Lopullinen
     # vastaus poimitaan viimeisen assistant-roolisen message_end-tapahtuman teksteistä.
     komento = ["pi", "--mode", "json", "--session-id", sessio_id(chat_id)]
+    if ajattelu:
+        komento += ["--thinking", ajattelu]
     if PI_MALLI:
         komento += ["--model", PI_MALLI]
     komento += [teksti]
@@ -267,7 +286,7 @@ def aja_pi(chat_id, teksti):
     vahti = threading.Timer(PI_AIKAKATKAISU, _tapa)
     vahti.start()
 
-    vastaus, virhe, rivit = None, None, []
+    vastaus, virhe, rivit, ilmoitettu_ajattelu = None, None, [], False
     try:
         for rivi in proc.stdout:
             rivit.append(rivi)
@@ -285,6 +304,15 @@ def aja_pi(chat_id, teksti):
                     laheta_viesti(chat_id,
                                   muotoile_tyokalu(tapahtuma.get("toolName"), args),
                                   loki=loki, parse_mode="HTML")
+            elif tyyppi in ("message_start", "message_update") and not ilmoitettu_ajattelu:
+                # Ensimmäinen ei-tyhjä thinking-sisältöosa = malli miettii oikeasti.
+                # Ilmoitetaan kerran (todiste + palaute).
+                viesti = tapahtuma.get("message") or {}
+                if viesti.get("role") == "assistant" and any(
+                        c.get("type") == "thinking" and (c.get("thinking") or "").strip()
+                        for c in (viesti.get("content") or [])):
+                    ilmoitettu_ajattelu = True
+                    laheta_viesti(chat_id, "🧠 Miettii…", loki=loki)
             elif tyyppi == "message_end":
                 viesti = tapahtuma.get("message") or {}
                 if viesti.get("role") != "assistant":
@@ -360,12 +388,23 @@ def main():
                 loki(f"Sessio nollattu chatille {chat_id} -> suffiksi {suffiksi}")
                 laheta_viesti(chat_id, "🆕 Aloitettu uusi keskustelu.", loki=loki)
                 continue
+            osat = teksti.strip().split(maxsplit=1)
+            if osat and osat[0].lower() in AJATTELU_KOMENNOT:
+                taso = AJATTELU_KOMENNOT[osat[0].lower()]
+                aseta_ajattelu(chat_id, taso)
+                loki(f"Ajattelu chatille {chat_id} -> {taso}")
+                # Pelkkä komento: vahvista. Komento + kysymys: aseta taso ja
+                # käsittele loppuosa normaalina viestinä (jää voimaan chatille).
+                teksti = osat[1] if len(osat) > 1 else ""
+                if not teksti.strip():
+                    laheta_viesti(chat_id, f"🧠 Ajattelu: {taso}.", loki=loki)
+                    continue
             loki(f"Viesti {chat_id}: {teksti[:80]!r}")
             naytä_kirjoittaa(chat_id)
             teksti_pi = esikasittele(teksti)
             if KERRO_LAHETTAJA:
                 teksti_pi = f"{lahettaja_tunniste(viesti)}\n\n{teksti_pi}"
-            laheta_viesti(chat_id, riisu_markdown(aja_pi(chat_id, teksti_pi)), loki=loki)
+            laheta_viesti(chat_id, riisu_markdown(aja_pi(chat_id, teksti_pi, ajattelu_taso(chat_id))), loki=loki)
 
 
 if __name__ == "__main__":
