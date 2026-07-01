@@ -20,7 +20,7 @@ def _pienenna_kuva(lahde, maks_reuna=KUVA_MAKS_REUNA):
 
 
 def _rakenna_runko(kehote, *, kuva_uri=None, systeemi=None,
-                   malli=MALLI_TEKSTIT, json_muoto=False):
+                   malli=MALLI_TEKSTIT, json_muoto=False, ajattele=False):
     """Rakentaa /v1/chat/completions -pyyntörungon. Pidetty erillään verkosta,
     jotta rakenne on testattavissa (ks. __main__)."""
     viestit = []
@@ -35,16 +35,24 @@ def _rakenna_runko(kehote, *, kuva_uri=None, systeemi=None,
     runko = {"model": malli, "messages": viestit, "stream": False}
     if json_muoto:
         runko["response_format"] = {"type": "json_object"}
+    # Ajattelu (reasoning) pois oletuksena: kaikki cron-kutsut ovat mekaanisia
+    # poiminta-/siistimis-/tiivistystehtäviä, jotka eivät hyödy ketjuajattelusta
+    # ja joita se vain hidastaa (+ voi sotkea json_muodon). Lähetetään aina
+    # eksplisiittisesti, jottei tulos riipu serverin oletuksesta. chat_template_kwargs
+    # on paikallisten template-backendien (llama.cpp/vLLM) tapa ohjata thinkingiä.
+    runko["chat_template_kwargs"] = {"enable_thinking": bool(ajattele)}
     return runko
 
 
 def kysy_llm(kehote, *, kuva=None, systeemi=None, malli=None, url=None,
-             aikakatkaisu=None, json_muoto=False):
+             aikakatkaisu=None, json_muoto=False, ajattele=False):
     """Lähettää kehotteen LLM:lle ja palauttaa vastaustekstin (str).
 
     kuva        polku kuvatiedostoon -> lähetetään multimodaalisena (data-URI).
     systeemi    valinnainen system-viesti.
     json_muoto  pakota validi JSON-vastaus.
+    ajattele    salli mallin ketjuajattelu (thinking). Oletus False — mekaaniset
+                tehtävät eivät sitä tarvitse ja se vain hidastaa.
     url         ohita LLM_URL (esim. hostilta ajettaessa localhost).
     Nostaa poikkeuksen HTTP-/verkkovirheessä — kutsuja päättää käsittelyn.
     """
@@ -54,7 +62,8 @@ def kysy_llm(kehote, *, kuva=None, systeemi=None, malli=None, url=None,
         kuva_uri = f"data:image/jpeg;base64,{_pienenna_kuva(kuva)}"
 
     runko = _rakenna_runko(kehote, kuva_uri=kuva_uri, systeemi=systeemi,
-                           malli=malli or MALLI_TEKSTIT, json_muoto=json_muoto)
+                           malli=malli or MALLI_TEKSTIT, json_muoto=json_muoto,
+                           ajattele=ajattele)
     data = json.dumps(runko).encode("utf-8")
     pyynto = urllib.request.Request(url or LLM_URL, data=data,
                                     headers={"Content-Type": "application/json"})
@@ -74,6 +83,8 @@ if __name__ == "__main__":
     assert r["messages"][0]["role"] == "system"
     assert r["messages"][1]["content"] == "hei"
     assert r["response_format"] == {"type": "json_object"}
+    assert r["chat_template_kwargs"] == {"enable_thinking": False}  # ajattelu pois oletuksena
+    assert _rakenna_runko("hei", ajattele=True)["chat_template_kwargs"] == {"enable_thinking": True}
     r2 = _rakenna_runko("mitä tässä", kuva_uri="data:image/jpeg;base64,AAAA")
     assert r2["messages"][-1]["content"][1]["image_url"]["url"].startswith("data:image/jpeg")
     try:
