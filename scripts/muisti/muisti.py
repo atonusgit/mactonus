@@ -7,11 +7,12 @@
 #   tiivista    Yli 2 kk vanhat kuukaudet -> kuukausitiivistelmä (LLM) + raakojen arkistointi.
 #   kokoa       Regeneroi MEMORY.md = kuukausitiivistelmät + jäljellä olevat päivätiedostot.
 #   migroi      Pilko nykyinen MEMORY.md:n päivälohkot päivätiedostoiksi (kertaluontoinen).
-#   aja         konsolidoi -> tiivista -> kokoa (cronin sisääntulopiste).
+#   git         Committaa muistimuutokset .pi-repoon (osa ajoa; versioi öisen muistin).
+#   aja         konsolidoi -> tiivista -> kokoa -> git (cronin sisääntulopiste).
 #
 # Vain stdlib + config.py + llm_apu. LLM-työ jaetulla kysy_llm-kutsulla kuten daily.py.
 
-import glob, json, os, re, shutil, sys, urllib.request
+import glob, json, os, re, shutil, subprocess, sys, urllib.request
 from datetime import datetime
 
 PI_AGENT = "/root/.pi/agent"
@@ -270,17 +271,46 @@ def migroi():
     print(f"migroi: siirretty {len(osumat)} lohkoa päivätiedostoihin", flush=True)
 
 
+def committaa_git(repo=None):
+    # Committaa muistimuutokset .pi-repoon (öinen ajo versioi muistin). .pi:n root
+    # on PI_AGENTin yläkansio (/root/.pi). Committaa vain jos muutoksia; git-virhe
+    # (esim. index.lock pi:n samanaikaisesta commitista) ei saa kaataa muistiajoa.
+    repo = repo or os.path.dirname(PI_AGENT)
+    polut = [p for p in ("agent/memory", "agent/MEMORY.md")
+             if os.path.exists(os.path.join(repo, p))]
+    if not polut:
+        return
+    # safe.directory: cron ajaa rootina ja .pi on host-mountattu (eri omistaja) ->
+    # ilman tätä git kieltäytyy "dubious ownership" -virheellä.
+    g = ["git", "-C", repo, "-c", f"safe.directory={repo}"]
+    try:
+        subprocess.run(g + ["add", "--"] + polut,
+                       check=True, capture_output=True, text=True)
+        if subprocess.run(g + ["diff", "--cached", "--quiet"]).returncode == 0:
+            print("git: ei muistimuutoksia committattavaksi", flush=True)
+            return
+        pvm = nyt().strftime("%Y-%m-%d")
+        subprocess.run(g + ["-c", "user.name=mactonus-muisti",
+                            "-c", "user.email=mactonus@localhost",
+                            "commit", "-q", "-m", f"muisti: öinen konsolidointi {pvm}"],
+                       check=True, capture_output=True, text=True)
+        print(f"git: muisti committattu ({pvm})", flush=True)
+    except Exception as e:
+        print(f"git: committaus epäonnistui, ohitetaan: {e}", flush=True)
+
+
 def aja():
     konsolidoi()
     tiivista()
     kokoa()
+    committaa_git()
 
 
 def main():
     komento = sys.argv[1] if len(sys.argv) > 1 else "aja"
     {"konsolidoi": konsolidoi, "tiivista": tiivista, "kokoa": kokoa,
-     "migroi": migroi, "aja": aja}.get(komento, lambda: sys.exit(
-        f"Tuntematon komento: {komento} (konsolidoi|tiivista|kokoa|migroi|aja)"))()
+     "migroi": migroi, "git": committaa_git, "aja": aja}.get(komento, lambda: sys.exit(
+        f"Tuntematon komento: {komento} (konsolidoi|tiivista|kokoa|migroi|git|aja)"))()
 
 
 if __name__ == "__main__":
